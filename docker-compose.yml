@@ -1,0 +1,3 @@
+# Altyapı servisleri (LLM, Home Assistant, veritabanı vb.) henüz eklenmedi.
+# İleride servis tanımları bu dosyada, uygulama bağımlılıkları netleştikten sonra yer alacak.
+services: {}

@@ -1,0 +1,1 @@
+"""Jarvis yerel asistan uygulaması."""
