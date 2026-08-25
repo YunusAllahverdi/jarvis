@@ -10,6 +10,12 @@ Kapsam:
  7. Kayıtlar MemoryStore Protocol üzerinden kalıcı hale getirilir
  8. ChatOrchestrator, SQLiteMemoryStore'a değil servise bağımlıdır
  9. Bellek üretmeyen turlarda mevcut davranış değişmez
+
+Phase 1C-2 — MemoryTemporalService entegrasyonu:
+10. temporal_service verilmezse davranış tamamen değişmeden kalır
+11. İki tur arasında çakışan bir gerçek, önceki turdaki kaydı geçersizleştirir
+12. temporal_service hata fırlatırsa bu, mevcut "depolama hatası" izolasyon
+    yoluyla yutulur — sohbet asla bozulmaz
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import asyncio
 import inspect
 import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,9 +32,11 @@ import pytest
 from app.adapters.llm.base import LLMUnavailableError
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.memory.extractor import MemoryExtractor
-from app.memory.record import MemoryRecord
+from app.memory.record import MemoryRecord, MemoryType
+from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.services.memory_service import MemoryWriteResult, MemoryWriteService
+from app.services.memory_temporal import MemoryTemporalService
 
 import app.services.orchestrator as orchestrator_module
 from app.services.conversation import InMemoryConversationStore
@@ -490,3 +499,112 @@ class TestExistingBehaviorUnchangedWhenNoMemories:
 
         assert result.response == "Merhaba!"
         assert result.session_id == "sess-none"
+
+
+# ---------------------------------------------------------------------------
+# Phase 1C-2 — MemoryTemporalService entegrasyonu
+# ---------------------------------------------------------------------------
+
+
+class _RaisingTemporalService:
+    """write() çağrısında her zaman beklenmedik bir hata fırlatan sahte servis."""
+
+    def write(self, record: MemoryRecord):  # noqa: ANN201
+        raise RuntimeError("temporal service boom")
+
+
+class TestTemporalServiceIntegration:
+    def test_temporal_service_none_means_direct_add_unchanged(self) -> None:
+        """temporal_service verilmezse MemoryWriteService eskisi gibi doğrudan add() kullanmalı."""
+        response = _json_response([
+            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
+        ])
+        store = _InMemoryFakeStore()
+        service = MemoryWriteService(extractor=_make_extractor(response), store=store)
+
+        result = _run(service.process_turn("I live in Istanbul.", session_id="s1"))
+
+        assert result.stored_count == 1
+        assert result.invalidated_count == 0
+        assert len(store.records) == 1
+
+    def test_conflicting_facts_across_two_turns_invalidate_old_one(
+        self, tmp_path: Path
+    ) -> None:
+        """MemoryTemporalService verildiğinde, iki ayrı sohbet turunda aynı
+        topic_key ile gelen çakışan gerçekler doğru şekilde çözülmeli."""
+        store = SQLiteMemoryStore(str(tmp_path / "temporal_integration.db"))
+        temporal_service = MemoryTemporalService(store=store)
+
+        first_response = _json_response([
+            {
+                "memory_type": "fact",
+                "content": "User lives in Istanbul.",
+                "temporality": "present",
+                "status": "active",
+                "topic_key": "user_residence",
+            }
+        ])
+        service_turn1 = MemoryWriteService(
+            extractor=_make_extractor(first_response), store=store, temporal_service=temporal_service
+        )
+        result1 = _run(service_turn1.process_turn("I live in Istanbul.", session_id="s1"))
+        assert result1.stored_count == 1
+        assert result1.invalidated_count == 0
+
+        second_response = _json_response([
+            {
+                "memory_type": "fact",
+                "content": "User lives in Ankara.",
+                "temporality": "present",
+                "status": "active",
+                "topic_key": "user_residence",
+            }
+        ])
+        service_turn2 = MemoryWriteService(
+            extractor=_make_extractor(second_response), store=store, temporal_service=temporal_service
+        )
+        result2 = _run(service_turn2.process_turn("I moved to Ankara.", session_id="s1"))
+        assert result2.stored_count == 1
+        assert result2.invalidated_count == 1
+
+        active = store.list_active(memory_type=MemoryType.FACT)
+        assert len(active) == 1
+        assert active[0].content == "User lives in Ankara."
+        # Eski kayıt fiziksel olarak hâlâ SQLite'ta.
+        assert store.count(include_deleted=True) == 2
+
+    def test_temporal_service_failure_is_isolated_and_does_not_raise(self) -> None:
+        """MemoryTemporalService.write() beklenmedik hata fırlatırsa, bu mevcut
+        'depolama hatası' izolasyon yolundan geçmeli — hiçbir istisna dışarı sızmamalı."""
+        response = _json_response([
+            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
+        ])
+        service = MemoryWriteService(
+            extractor=_make_extractor(response),
+            store=_InMemoryFakeStore(),
+            temporal_service=_RaisingTemporalService(),
+        )
+
+        result = _run(service.process_turn("I live in Istanbul.", session_id="s1"))
+
+        assert isinstance(result, MemoryWriteResult)  # hata fırlatılmadı
+        assert result.store_failed is True
+        assert result.stored_count == 0
+
+    def test_temporal_service_failure_does_not_break_chat_via_orchestrator(self) -> None:
+        """Uçtan uca: ChatOrchestrator + MemoryWriteService + patlayan
+        temporal_service — normal sohbet cevabı yine de başarılı olmalı."""
+        response = _json_response([
+            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
+        ])
+        memory_service = MemoryWriteService(
+            extractor=_make_extractor(response),
+            store=_InMemoryFakeStore(),
+            temporal_service=_RaisingTemporalService(),
+        )
+        orchestrator = _make_orchestrator(memory_service=memory_service)
+
+        result = _run(orchestrator.respond("I live in Istanbul.", "sess-temporal"))
+
+        assert result.response == "Merhaba!"

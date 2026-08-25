@@ -10,6 +10,11 @@ Mimari kurallar:
   başarısızlığı normal sohbet cevabını hiçbir zaman bozmamalıdır.
 - Ham LLM çıktısı bu servise hiç ulaşmaz — MemoryExtractor tarafından
   zaten doğrulanmış MemoryRecord nesneleri alınır.
+- İsteğe bağlı bir MemoryTemporalService verilirse, her kayıt doğrudan
+  store.add() yerine bu servis üzerinden yazılır — böylece aynı konudaki
+  (topic_key) önceki etkin kayıtlar fiziksel olarak silinmeden
+  geçersizleştirilir. Verilmezse (varsayılan None) davranış tamamen
+  değişmeden kalır: her kayıt doğrudan store.add() ile eklenir.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from pydantic import BaseModel
 
 from app.memory.extractor import MemoryExtractor
 from app.memory.store import MemoryStore
+from app.services.memory_temporal import MemoryTemporalService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,7 @@ class MemoryWriteResult(BaseModel):
 
     stored_count: int = 0
     rejected_count: int = 0
+    invalidated_count: int = 0
     extraction_failed: bool = False
     store_failed: bool = False
 
@@ -49,14 +56,26 @@ class MemoryWriteService:
         service = MemoryWriteService(extractor=extractor, store=store)
         result = await service.process_turn("I live in Istanbul.", session_id="s1")
 
+        # Zamansal çakışma çözümü ile:
+        service = MemoryWriteService(
+            extractor=extractor, store=store, temporal_service=temporal_service
+        )
+
     ChatOrchestrator yalnızca bu servise bağımlı olur; MemoryExtractor'ın
     hangi LLM'i kullandığını veya MemoryStore'un SQLite mi yoksa başka bir
     backend mi olduğunu bilmesi gerekmez.
     """
 
-    def __init__(self, *, extractor: MemoryExtractor, store: MemoryStore) -> None:
+    def __init__(
+        self,
+        *,
+        extractor: MemoryExtractor,
+        store: MemoryStore,
+        temporal_service: MemoryTemporalService | None = None,
+    ) -> None:
         self._extractor = extractor
         self._store = store
+        self._temporal_service = temporal_service
 
     async def process_turn(
         self,
@@ -93,10 +112,15 @@ class MemoryWriteService:
             )
 
         stored_count = 0
+        invalidated_count = 0
         store_failed = False
         for record in extraction.records:
             try:
-                self._store.add(record)
+                if self._temporal_service is not None:
+                    result = self._temporal_service.write(record)
+                    invalidated_count += len(result.invalidated_ids)
+                else:
+                    self._store.add(record)
                 stored_count += 1
             except Exception:  # noqa: BLE001
                 store_failed = True
@@ -108,5 +132,6 @@ class MemoryWriteService:
         return MemoryWriteResult(
             stored_count=stored_count,
             rejected_count=extraction.rejected_count,
+            invalidated_count=invalidated_count,
             store_failed=store_failed,
         )

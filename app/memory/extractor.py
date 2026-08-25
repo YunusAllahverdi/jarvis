@@ -92,6 +92,16 @@ ALLOWED status values: "active", "planned", "completed", "cancelled", "expired",
 
 importance: float between 0.0 (trivial) and 1.0 (critical). Default 0.5.
 
+topic_key (OPTIONAL): a short, stable, lowercase snake_case label (letters,
+digits, underscores only, e.g. "user_residence", "user_theme_preference",
+"travel_plan_america") identifying the real-world thing this memory is
+about, ONLY when that thing can change or be replaced later (where the
+user lives, a standing preference, a specific planned trip/event). Use the
+SAME topic_key across different turns/messages for the SAME real-world
+thing, so a later update (e.g. a new city, a cancelled trip) can be
+recognized as replacing the earlier one. Omit topic_key entirely for
+one-off facts that are not expected to be replaced.
+
 OUTPUT FORMAT — respond with ONLY valid JSON, no markdown, no explanation:
 {
   "memories": [
@@ -100,7 +110,16 @@ OUTPUT FORMAT — respond with ONLY valid JSON, no markdown, no explanation:
       "content": "The user's name is Alice.",
       "temporality": "present",
       "status": "active",
-      "importance": 0.7
+      "importance": 0.7,
+      "topic_key": null
+    },
+    {
+      "memory_type": "fact",
+      "content": "The user lives in Istanbul.",
+      "temporality": "present",
+      "status": "active",
+      "importance": 0.6,
+      "topic_key": "user_residence"
     }
   ]
 }"""
@@ -123,6 +142,7 @@ class _MemoryCandidate(BaseModel):
     temporality: Temporality = Temporality.UNKNOWN
     status: MemoryStatus = MemoryStatus.ACTIVE
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    topic_key: str | None = Field(default=None, max_length=64)
 
     @field_validator("memory_type")
     @classmethod
@@ -140,6 +160,26 @@ class _MemoryCandidate(BaseModel):
         if not v.strip():
             raise ValueError("content must not be blank or whitespace-only")
         return v.strip()
+
+    @field_validator("topic_key")
+    @classmethod
+    def normalize_or_discard_topic_key(cls, v: str | None) -> str | None:
+        """topic_key, deterministik çakışma eşleştirmesi için normalize edilir.
+
+        Boş/whitespace-only veya sözdizimi geçersiz (yalnızca küçük harf,
+        rakam, alt çizgi kabul edilir) ise SESSİZCE None'a indirgenir —
+        candidate reddedilmez. topic_key yalnızca isteğe bağlı bir çakışma
+        ipucudur; biçimi bozuksa bile altındaki gerçek bellek adayı
+        (content, memory_type vb.) hâlâ değerlidir ve kaybedilmemelidir.
+        Bozuk bir topic_key en kötü ihtimalle çakışma tespitini atlatır
+        (güvenli hata modu) — hiçbir zaman geçerli bir belleği reddettirmez.
+        """
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if not normalized or not re.fullmatch(r"[a-z0-9_]{1,64}", normalized):
+            return None
+        return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +376,11 @@ class MemoryExtractor:
             return None
 
         # Aşama 5: MemoryRecord'a dönüştür
+        # topic_key varsa metadata'ya taşınır — MemoryTemporalService bunu
+        # deterministik çakışma eşleştirmesi için kullanır (bkz.
+        # app/services/memory_temporal.py). Şema değişikliği gerekmez:
+        # metadata zaten mevcut, esnek bir JSON alanıdır.
+        metadata = {"topic_key": candidate.topic_key} if candidate.topic_key else {}
         return MemoryRecord(
             memory_type=candidate.memory_type,
             content=stripped,
@@ -343,6 +388,7 @@ class MemoryExtractor:
             status=candidate.status,
             importance=candidate.importance,
             source_session_id=session_id,
+            metadata=metadata,
         )
 
 
