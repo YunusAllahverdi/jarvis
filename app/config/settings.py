@@ -1,10 +1,33 @@
 """Ortam değişkenlerinden güvenli uygulama ayarları yüklenir."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_memory_db_path() -> str:
+    """Platformdan bağımsız varsayılan bellek veritabanı yolu.
+
+    Windows : %LOCALAPPDATA%/Jarvis/memory.db
+    macOS   : ~/Library/Application Support/Jarvis/memory.db
+    Linux   : ~/.local/share/jarvis/memory.db
+    Fallback: ~/.jarvis/memory.db
+    """
+    import os
+    import sys
+
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return str(base / "Jarvis" / "memory.db")
+    if sys.platform == "darwin":
+        return str(Path.home() / "Library" / "Application Support" / "Jarvis" / "memory.db")
+    # Linux ve diğer POSIX
+    xdg = os.environ.get("XDG_DATA_HOME", "")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return str(base / "jarvis" / "memory.db")
 
 
 class Settings(BaseSettings):
@@ -23,6 +46,9 @@ class Settings(BaseSettings):
     # Kaç konuşma mesajının LLM bağlamına dahil edileceği (system mesajı hariç).
     # Sıfır veya negatif değer sınırı devre dışı bırakır.
     conversation_context_limit: int = Field(default=40, ge=0)
+    # Kalıcı bellek veritabanının yolu.
+    # Boş bırakılırsa platforma özgü kullanıcı veri dizini kullanılır.
+    memory_db_path: str = Field(default_factory=_default_memory_db_path)
 
     model_config = SettingsConfigDict(
         env_file=".env",
