@@ -14,7 +14,10 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.memory.extractor import MemoryExtractor
+from app.memory.sqlite_store import SQLiteMemoryStore
 from app.services.conversation import ConversationStore, InMemoryConversationStore
+from app.services.memory_service import MemoryWriteService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.tools.base import PermissionLevel
@@ -38,11 +41,21 @@ def create_app(
     provider: LLMProvider | None = None,
     conversation_store: ConversationStore | None = None,
     tool_registry: ToolRegistry | None = None,
+    memory_service: MemoryWriteService | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
     active_settings = settings or get_settings()
     configure_logging(active_settings.log_level)
+
+    # provider enjekte edilmediyse gerçek (üretim) Ollama sağlayıcısı kurulur.
+    # Bellek yığınının otomatik bağlanması da yalnızca bu durumda yapılır: bir
+    # test/çağıran kendi sahte sağlayıcısını enjekte ettiğinde, bu sağlayıcı
+    # bellek çıkarımına da sessizce bağlanmaz. Bu sayede mevcut testler
+    # (memory_service enjekte etmeyen tüm testler) hiç etkilenmeden eskisi
+    # gibi çalışmaya devam eder; bellek istenen testler memory_service'i
+    # açıkça enjekte eder.
+    using_default_provider = provider is None
     active_provider = provider if provider is not None else OllamaProvider(
         base_url=active_settings.ollama_base_url,
         model=active_settings.ollama_model,
@@ -54,12 +67,20 @@ def create_app(
     active_tool_registry = (
         tool_registry if tool_registry is not None else build_default_tool_registry()
     )
+
+    active_memory_service = memory_service
+    if active_memory_service is None and using_default_provider:
+        memory_store = SQLiteMemoryStore(active_settings.memory_db_path)
+        memory_extractor = MemoryExtractor(provider=active_provider)
+        active_memory_service = MemoryWriteService(extractor=memory_extractor, store=memory_store)
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
         prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
         tool_registry=active_tool_registry,
         tool_executor=ToolExecutor(active_tool_registry, allowed_permissions={PermissionLevel.READ}),
+        memory_service=active_memory_service,
         context_message_limit=active_settings.conversation_context_limit,
     )
 
@@ -87,6 +108,7 @@ def create_app(
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
     app.state.tool_registry = active_tool_registry
+    app.state.memory_service = active_memory_service
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
 
