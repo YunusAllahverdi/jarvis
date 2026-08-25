@@ -1,0 +1,1 @@
+"""Değiştirilebilir sistem prompt kaynakları."""

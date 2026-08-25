@@ -8,9 +8,15 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.adapters.llm.base import LLMProvider
+from app.adapters.llm.ollama import OllamaProvider
+from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.services.conversation import InMemoryConversationStore
+from app.services.orchestrator import ChatOrchestrator
+from app.services.prompts import SystemPromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +29,28 @@ class ServiceInfo(BaseModel):
     environment: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    provider: LLMProvider | None = None,
+    conversation_store: InMemoryConversationStore | None = None,
+) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
     active_settings = settings or get_settings()
     configure_logging(active_settings.log_level)
+    active_provider = provider if provider is not None else OllamaProvider(
+        base_url=active_settings.ollama_base_url,
+        model=active_settings.ollama_model,
+        timeout_seconds=active_settings.ollama_timeout_seconds,
+    )
+    active_conversation_store = (
+        conversation_store if conversation_store is not None else InMemoryConversationStore()
+    )
+    chat_orchestrator = ChatOrchestrator(
+        provider=active_provider,
+        conversation_store=active_conversation_store,
+        prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -48,7 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = active_settings
+    app.state.chat_orchestrator = chat_orchestrator
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(chat_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:
