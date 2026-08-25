@@ -137,6 +137,17 @@ class ChatOrchestrator:
         """
         self._memory_service = memory_service
 
+    def set_memory_retrieval(self, memory_retrieval: MemoryRetrievalService | None) -> None:
+        """Bellek getirme servisini kurucudan sonra bağlar (geç bağlama).
+
+        set_memory_service() ile aynı gerekçe: create_app()'in üretim
+        yolunda, SQLite dosyasına dokunan gerçek bellek yığını modül import
+        anında değil, uygulama fiilen başlatıldığında (lifespan startup)
+        kurulur. Bu metod, o an henüz mevcut olmayan retrieval servisinin
+        orchestrator'a sonradan bağlanmasını sağlar.
+        """
+        self._memory_retrieval = memory_retrieval
+
     def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Geçmiş mesajları context window limitine göre kırpar.
 

@@ -1,11 +1,11 @@
-"""Phase 1B-3A — Bellek bileşenlerinin gerçek FastAPI uygulamasına bağlanması.
+"""Phase 1B-3A/3D — Bellek bileşenlerinin gerçek FastAPI uygulamasına bağlanması.
 
-Kapsam:
+Kapsam (1B-3A — yazma yığını):
  1. create_app() bellek yığınını (SQLiteMemoryStore + MemoryExtractor +
-    MemoryWriteService) varsayılan (enjekte edilmemiş) sağlayıcı ile kurabilir
-    — ANCAK bu kurulum uygulama fiilen başlatılana (lifespan startup) kadar
-    gerçekleşmez; salt create_app() çağrısı veya modül import'u SQLite
-    dosyasına dokunmaz.
+    MemoryWriteService + MemoryRetrievalService) varsayılan (enjekte
+    edilmemiş) sağlayıcı ile kurabilir — ANCAK bu kurulum uygulama fiilen
+    başlatılana (lifespan startup) kadar gerçekleşmez; salt create_app()
+    çağrısı veya modül import'u SQLite dosyasına dokunmaz.
  2. settings.memory_db_path, SQLiteMemoryStore'a doğru şekilde iletilir.
  3. MemoryWriteService doğru extractor/store referanslarını alır.
  4. ChatOrchestrator, kurulan MemoryWriteService'i (geç bağlama ile) alır.
@@ -17,6 +17,16 @@ Kapsam:
  8. Uygulama gerçekten başlatıldığında (lifespan) SQLite veritabanı dosyası
     yapılandırılan yolda oluşturulur — ama yalnızca o zaman; create_app()'i
     çağırmak veya `app.main`'i import etmek başlı başına dosyayı oluşturmaz.
+
+Kapsam (1B-3D — getirme yığını + paylaşılan store):
+ 9. MemoryWriteService ve MemoryRetrievalService AYNI SQLiteMemoryStore
+    örneğini paylaşır.
+10. ChatOrchestrator hem memory_service hem memory_retrieval'i alır.
+11. Yalnızca memory_service (retrieval olmadan) enjekte edilirse otomatik
+    kurulum tamamen devre dışı kalır (ikisi de birlikte kurulur/kurulmaz).
+12. Gerçek bir /api/chat akışı bir bellek yazabilir ve sonraki bir tur bu
+    belleği getirip LLM bağlamına ekleyebilir (uçtan uca, gerçek SQLite ile).
+13. Bellek getirme hatası normal sohbeti bozmaz.
 """
 
 from __future__ import annotations
@@ -36,6 +46,7 @@ from app.main import create_app
 from app.memory.extractor import MemoryExtractor
 from app.memory.record import MemoryRecord
 from app.memory.sqlite_store import SQLiteMemoryStore
+from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 
 
@@ -132,6 +143,34 @@ class _FailingStore:
         return []
 
 
+class _FailingSearchStore:
+    """MemoryStore Protocol'ünü karşılayan ama search() sırasında her zaman patlayan sahte store."""
+
+    def add(self, record: MemoryRecord) -> MemoryRecord:
+        return record
+
+    def update(self, record: MemoryRecord) -> MemoryRecord:
+        return record
+
+    def invalidate(self, memory_id: str, *, at=None) -> bool:
+        return False
+
+    def delete(self, memory_id: str, *, at=None) -> bool:
+        return False
+
+    def get(self, memory_id: str) -> MemoryRecord | None:
+        return None
+
+    def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
+        return []
+
+    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+        return []
+
+    def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
+        raise RuntimeError("search backend unavailable")
+
+
 # ---------------------------------------------------------------------------
 # 1-5. create_app bellek yığınını doğru şekilde kurar / gerektiğinde kurmaz
 # ---------------------------------------------------------------------------
@@ -139,22 +178,26 @@ class _FailingStore:
 
 class TestCreateAppBuildsMemoryStack:
     def test_create_app_alone_does_not_build_memory_stack_yet(self, tmp_path: Path) -> None:
-        """create_app() dönüşünde — lifespan başlamadan önce — bellek servisi henüz None olmalı."""
+        """create_app() dönüşünde — lifespan başlamadan önce — bellek servisleri henüz None olmalı."""
         settings = _make_settings(tmp_path)
 
         app = create_app(settings=settings)
 
         assert app.state.memory_service is None
+        assert app.state.memory_retrieval is None
+        assert app.state.memory_store is None
         assert app.state.chat_orchestrator._memory_service is None
+        assert app.state.chat_orchestrator._memory_retrieval is None
 
     def test_default_provider_triggers_real_memory_wiring_on_startup(self, tmp_path: Path) -> None:
-        """provider enjekte edilmediğinde (gerçek üretim yolu) bellek, uygulama
-        gerçekten başlatıldığında (lifespan) otomatik kurulmalı."""
+        """provider enjekte edilmediğinde (gerçek üretim yolu) bellek yazma VE
+        getirme, uygulama gerçekten başlatıldığında (lifespan) otomatik kurulmalı."""
         settings = _make_settings(tmp_path)
         app = create_app(settings=settings)
 
         with TestClient(app):
             assert isinstance(app.state.memory_service, MemoryWriteService)
+            assert isinstance(app.state.memory_retrieval, MemoryRetrievalService)
 
     def test_memory_db_path_is_passed_to_sqlite_store(self, tmp_path: Path) -> None:
         settings = _make_settings(tmp_path)
@@ -164,6 +207,7 @@ class TestCreateAppBuildsMemoryStack:
             store = app.state.memory_service._store
             assert isinstance(store, SQLiteMemoryStore)
             assert store._db_path == settings.memory_db_path
+            assert app.state.memory_store is store
 
     def test_memory_service_extractor_is_bound_to_the_active_provider(self, tmp_path: Path) -> None:
         """MemoryExtractor, orchestrator'ın kullandığı aynı LLM sağlayıcısını kullanmalı —
@@ -183,9 +227,12 @@ class TestCreateAppBuildsMemoryStack:
         with TestClient(app):
             assert app.state.chat_orchestrator._memory_service is app.state.memory_service
             assert isinstance(app.state.chat_orchestrator._memory_service, MemoryWriteService)
+            assert app.state.chat_orchestrator._memory_retrieval is app.state.memory_retrieval
+            assert isinstance(app.state.chat_orchestrator._memory_retrieval, MemoryRetrievalService)
 
     def test_injected_fake_provider_does_not_auto_wire_memory(self, tmp_path: Path) -> None:
-        """Testlerin enjekte ettiği sahte sağlayıcılar bellek çıkarımına otomatik bağlanmamalı.
+        """Testlerin enjekte ettiği sahte sağlayıcılar bellek çıkarımına/getirmesine
+        otomatik bağlanmamalı.
 
         Bu davranış, mevcut test paketinin (test_chat.py, test_hardening.py vb.)
         hiçbir değişiklik yapılmadan geçmeye devam etmesini garanti eder.
@@ -195,11 +242,15 @@ class TestCreateAppBuildsMemoryStack:
         app = create_app(settings=settings, provider=_FakeChatProvider())
 
         assert app.state.memory_service is None
+        assert app.state.memory_retrieval is None
         assert app.state.chat_orchestrator._memory_service is None
+        assert app.state.chat_orchestrator._memory_retrieval is None
 
         with TestClient(app):
             assert app.state.memory_service is None
+            assert app.state.memory_retrieval is None
             assert app.state.chat_orchestrator._memory_service is None
+            assert app.state.chat_orchestrator._memory_retrieval is None
 
     def test_explicit_memory_service_override_is_used_as_is(self, tmp_path: Path) -> None:
         """Çağıran açıkça bir memory_service verirse, otomatik kurulum devre dışı kalır."""
@@ -218,6 +269,40 @@ class TestCreateAppBuildsMemoryStack:
 
         assert app.state.memory_service is custom_service
         assert app.state.chat_orchestrator._memory_service is custom_service
+
+    def test_explicit_memory_retrieval_override_is_used_as_is(self, tmp_path: Path) -> None:
+        """Çağıran açıkça bir memory_retrieval verirse, otomatik kurulum devre dışı kalır."""
+        real_store = SQLiteMemoryStore(str(tmp_path / "custom.db"))
+        custom_retrieval = MemoryRetrievalService(store=real_store)
+        settings = _make_settings(tmp_path)
+
+        app = create_app(
+            settings=settings,
+            provider=_FakeChatProvider(),
+            memory_retrieval=custom_retrieval,
+        )
+
+        assert app.state.memory_retrieval is custom_retrieval
+        assert app.state.chat_orchestrator._memory_retrieval is custom_retrieval
+
+    def test_providing_only_memory_service_disables_all_auto_wiring(self, tmp_path: Path) -> None:
+        """Yalnızca memory_service verilip memory_retrieval verilmezse (provider
+        varsayılan olsa bile), otomatik kurulum ikisi için de devreye girmez —
+        yazma ve getirme her zaman BİRLİKTE, atomik olarak kurulur."""
+        real_store = SQLiteMemoryStore(str(tmp_path / "custom.db"))
+        custom_service = MemoryWriteService(
+            extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(_json_response([]))),
+            store=real_store,
+        )
+        settings = _make_settings(tmp_path)
+
+        # provider enjekte edilmiyor (varsayılan/gerçek yol) — yalnızca memory_service verildi.
+        app = create_app(settings=settings, memory_service=custom_service)
+
+        with TestClient(app):
+            assert app.state.memory_service is custom_service
+            assert app.state.memory_retrieval is None
+            assert app.state.chat_orchestrator._memory_retrieval is None
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +377,112 @@ class TestChatSurvivesMemoryFailure:
 
         assert response.status_code == 200
         assert response.json()["response"] == "Jarvis: hâlâ ayakta."
+
+
+# ---------------------------------------------------------------------------
+# 9. MemoryWriteService ve MemoryRetrievalService AYNI store'u paylaşır
+# ---------------------------------------------------------------------------
+
+
+class TestWriteAndRetrievalShareTheSameStore:
+    def test_auto_wired_services_share_the_same_sqlite_store_instance(self, tmp_path: Path) -> None:
+        settings = _make_settings(tmp_path)
+        app = create_app(settings=settings)
+
+        with TestClient(app):
+            write_store = app.state.memory_service._store
+            retrieval_store = app.state.memory_retrieval._store
+            assert write_store is retrieval_store
+            assert write_store is app.state.memory_store
+            assert isinstance(write_store, SQLiteMemoryStore)
+
+
+# ---------------------------------------------------------------------------
+# 12-13. Uçtan uca: bir turda yazılan bellek sonraki turda getirilip
+# LLM bağlamına eklenir; getirme hatası sohbeti bozmaz
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndWriteThenRetrieve:
+    def test_memory_written_in_one_turn_is_retrieved_in_a_later_turn(self, tmp_path: Path) -> None:
+        """Gerçek SQLiteMemoryStore ile: 1. turda yazılan bellek, 2. turda
+        MemoryRetrievalService.search() (FTS5) ile bulunup LLM bağlamına
+        <relevant_memory> bloğu olarak eklenmelidir."""
+        chat_provider = _FakeChatProvider("Jarvis: tamam.")
+        memory_response = _json_response([
+            {
+                "memory_type": "fact",
+                "content": "The user's favorite city is Istanbul.",
+                "temporality": "present",
+                "status": "active",
+            }
+        ])
+        real_store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
+        memory_service = MemoryWriteService(
+            extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(memory_response)),
+            store=real_store,
+        )
+        memory_retrieval = MemoryRetrievalService(store=real_store)
+        settings = _make_settings(tmp_path)
+        app = create_app(
+            settings=settings,
+            provider=chat_provider,
+            memory_service=memory_service,
+            memory_retrieval=memory_retrieval,
+        )
+
+        with TestClient(app) as client:
+            first = client.post(
+                "/api/chat", json={"message": "My favorite city is Istanbul."}
+            )
+            session_id = first.json()["session_id"]
+            assert real_store.count() == 1
+
+            # Not: SQLite FTS5'in varsayılan sorgu sözdizimi, boşlukla ayrılmış
+            # kelimeleri örtük AND ile birleştirir — bu yüzden test sorgusu
+            # kasıtlı olarak saklanan içerikte gerçekten geçen tek bir kelime
+            # kullanır (gerçek arama davranışını taklit etmek, FTS5 sözdizimini
+            # test etmek değil bu testin amacı; FTS5'in kendi davranışı zaten
+            # test_memory_store.py'de ayrıca test ediliyor).
+            second = client.post(
+                "/api/chat",
+                json={"message": "Istanbul", "session_id": session_id},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+        # 2. sohbet turunda LLM'e gönderilen mesajlar arasında getirilen
+        # bellek bloğu bulunmalı.
+        second_turn_messages = chat_provider.calls[1]
+        system_messages = [m for m in second_turn_messages if m.role == "system"]
+        assert len(system_messages) == 2
+        memory_block = system_messages[1]
+        assert "<relevant_memory>" in memory_block.content
+        assert "The user's favorite city is Istanbul." in memory_block.content
+
+    def test_retrieval_failure_does_not_break_chat_response(self, tmp_path: Path) -> None:
+        chat_provider = _FakeChatProvider("Jarvis: sorun yok.")
+        memory_retrieval = MemoryRetrievalService(store=_FailingSearchStore())
+        settings = _make_settings(tmp_path)
+        app = create_app(
+            settings=settings,
+            provider=chat_provider,
+            memory_service=MemoryWriteService(
+                extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(_json_response([]))),
+                store=_FailingSearchStore(),
+            ),
+            memory_retrieval=memory_retrieval,
+        )
+
+        with TestClient(app) as client:
+            response = client.post("/api/chat", json={"message": "Merhaba"})
+
+        assert response.status_code == 200
+        assert response.json()["response"] == "Jarvis: sorun yok."
+        # Getirme patladığından hiçbir bellek bloğu eklenmemiş olmalı.
+        sent = chat_provider.calls[0]
+        assert not any("<relevant_memory>" in m.content for m in sent)
 
 
 # ---------------------------------------------------------------------------
