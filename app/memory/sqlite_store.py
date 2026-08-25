@@ -426,34 +426,62 @@ class SQLiteMemoryStore:
         temporality: Temporality | None = None,
         limit: int = 20,
     ) -> list[MemoryRecord]:
-        """FTS5 tam metin araması.
+        """Doğal dil destekli FTS5 tam metin araması.
+
+        Strateji (Phase 1C-1 — hâlâ salt anahtar kelime araması, embedding yok):
+        1. Sorgudan yaygın İngilizce/Türkçe soru-kalıbı dolgu kelimeleri
+           ("what", "was", "my", "ne", "mi", "neydi" vb.) çıkarılır. Bu liste
+           kasıtlı olarak genel tutulur — hiçbir alana özgü kelime içermez.
+        2. Önce KATI sorgu denenir: kalan terimler örtük AND ile birleştirilir.
+           Bu, mevcut kesin anahtar kelime davranışını birebir korur ve en
+           yüksek kesinliğe (precision) sahiptir.
+        3. Katı sorgu hiçbir sonuç döndürmezse VE birden fazla anlamlı terim
+           varsa, terimler OR ile birleştirilerek GEVŞETİLMİŞ bir sorgu
+           denenir. Bu, "What was my YKS goal?" gibi doğal dil sorularının,
+           sıkı AND eşleşmesi başarısız olsa bile (örn. sorgu ile saklanan
+           içerik arasında yalnızca bir-iki kelime ortak olsa bile) ilgili
+           belleği bulabilmesini sağlar.
 
         Aktif (silinmemiş ve geçersizleştirilmemiş) kayıtlar arasında arama yapar.
-        Phase 1A: keyword araması. Gelecekte vektör aramasıyla desteklenebilir.
+        Vektör/semantik arama yerine geçebilir — bu imza sabit kalır.
         """
         if not query.strip():
             return []
 
-        # FTS5 sorgusunu normalize et — özel karakterleri temizle
-        safe_query = _sanitize_fts_query(query)
-        if not safe_query:
+        terms = _extract_search_terms(query)
+        if not terms:
             return []
 
-        conditions = [
-            "m.deleted_at IS NULL",
-            "m.invalid_at IS NULL",
-        ]
-        params: list[object] = [safe_query]
-
+        conditions = ["m.deleted_at IS NULL", "m.invalid_at IS NULL"]
+        filter_params: list[object] = []
         if memory_type is not None:
             conditions.append("m.memory_type = ?")
-            params.append(memory_type.value)
+            filter_params.append(memory_type.value)
         if temporality is not None:
             conditions.append("m.temporality = ?")
-            params.append(temporality.value)
-
-        params.append(limit)
+            filter_params.append(temporality.value)
         where = " AND ".join(conditions)
+
+        rows = self._search_fts(" ".join(terms), where, filter_params, limit)
+        if not rows and len(terms) > 1:
+            # Katı (AND) sorgu sonuç vermedi — kademeli olarak gevşetilmiş
+            # (OR) sorguya geç. Yalnızca birden fazla terim varken anlamlıdır;
+            # tek terimli sorguda AND ile OR zaten aynı sorgudur.
+            rows = self._search_fts(" OR ".join(terms), where, filter_params, limit)
+
+        return [_row_to_record(r) for r in rows]
+
+    def _search_fts(
+        self,
+        fts_query: str,
+        where: str,
+        filter_params: list[object],
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        """Tek bir FTS5 MATCH sorgusunu çalıştırır.
+
+        Hatalı FTS sözdizimi durumunda hata fırlatmaz — boş liste döner.
+        """
         sql = f"""
         SELECT m.*
         FROM memories m
@@ -463,15 +491,13 @@ class SQLiteMemoryStore:
         ORDER BY rank, m.valid_at DESC
         LIMIT ?
         """
-
+        params: list[object] = [fts_query, *filter_params, limit]
         with self._connect() as conn:
             try:
-                rows = conn.execute(sql, params).fetchall()
+                return conn.execute(sql, params).fetchall()
             except sqlite3.OperationalError:
-                # Hatalı FTS sözdizimi — boş liste döndür
-                logger.warning("fts_query_failed", extra={"query": query})
+                logger.warning("fts_query_failed", extra={"query": fts_query})
                 return []
-        return [_row_to_record(r) for r in rows]
 
     # ------------------------------------------------------------------
     # Yardımcılar
@@ -500,16 +526,69 @@ class SQLiteMemoryStore:
 # ---------------------------------------------------------------------------
 
 def _sanitize_fts_query(query: str) -> str:
-    """FTS5 özel karakterlerini temizleyerek güvenli arama dizesi üretir.
+    """FTS5 sorgu sözdizimini bozabilecek karakterleri temizleyerek güvenli
+    bir arama dizesi üretir.
+
+    Yalnızca harf/rakam (Unicode dahil — Türkçe karakterler korunur) ve
+    boşluk karakterleri saklanır; geri kalan her şey (FTS5 sorgu operatörleri
+    '"', '(', ')', '*', '^', '+', '-', ':', '~' VE genel cümle noktalaması
+    '?', '.', ',', '!', ';' vb.) boşlukla değiştirilir. FTS5'in bareword
+    sorgu ayrıştırıcısı bu noktalama işaretlerinin çoğunda sözdizimi hatası
+    fırlatır (örn. "goal?" → "fts5: syntax error near '?'") — bu yüzden
+    doğal dil sorgularının (soru işaretiyle bitenler dahil) güvenle
+    aranabilmesi için tüm noktalama kaldırılır.
 
     Karmaşık FTS sözdizimi (AND, OR, NOT, tırnak içi ifadeler) Phase 1A'da
     desteklenmez. Yalnızca temiz kelimeler aranır.
     """
-    # FTS5 özel karakterlerini kaldır
-    for ch in ('"', "'", "(", ")", "*", "^", "+", "-", ":", "~"):
-        query = query.replace(ch, " ")
-    # Birden fazla boşluğu tek boşluğa indir
-    tokens = query.split()
+    cleaned = "".join(ch if (ch.isalnum() or ch.isspace()) else " " for ch in query)
+    tokens = cleaned.split()
     # Çok kısa token'ları at (1 karakter)
     tokens = [t for t in tokens if len(t) > 1]
     return " ".join(tokens)
+
+
+# ---------------------------------------------------------------------------
+# Doğal dil sorgusundan anlamlı arama terimleri çıkarma (Phase 1C-1)
+# ---------------------------------------------------------------------------
+#
+# Kasıtlı olarak küçük, deterministic ve genel tutulur — LLM çağrısı yok,
+# hiçbir alana özgü (örn. "YKS") kelime yok. Yalnızca İngilizce ve Türkçe
+# soru kalıplarında sık geçen fonksiyon/dolgu kelimelerini kapsar.
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # İngilizce — soru kelimeleri, yardımcı fiiller, zamirler, edatlar
+        "a", "an", "the", "is", "are", "was", "were", "am", "be", "been", "being",
+        "what", "when", "where", "who", "whom", "which", "why", "how",
+        "do", "does", "did", "doing", "will", "would", "can", "could", "should",
+        "i", "you", "he", "she", "it", "we", "they",
+        "me", "him", "her", "us", "them",
+        "my", "your", "his", "its", "our", "their",
+        "mine", "yours", "ours", "theirs",
+        "of", "to", "in", "on", "at", "for", "with", "about", "again",
+        "remember", "recall", "know", "tell", "please",
+        "and", "or", "not", "so", "just", "again",
+        # Türkçe — soru ekleri, yardımcı fiiller, zamirler, sık dolgu kelimeler
+        "ne", "neydi", "nedir", "neler",
+        "mi", "mı", "mu", "mü",
+        "musun", "misin", "musunuz", "misiniz", "mısın", "mısınız",
+        "benim", "senin", "onun", "bizim", "sizin", "onların",
+        "biliyor", "biliyorsun", "biliyor musun",
+        "hatırlıyor", "hatırlıyorsun", "hatırlar", "hatırlamıyorum",
+        "hakkında", "için", "var", "yok", "acaba", "lütfen", "ve", "veya",
+    }
+)
+
+
+def _extract_search_terms(query: str) -> list[str]:
+    """Sanitize edilmiş sorgudan dolgu kelimeler ayıklanmış anlamlı terimleri döndürür.
+
+    `_sanitize_fts_query` ile aynı özel karakter temizliğini uygular, ardından
+    yaygın soru/konuşma dolgu kelimelerini eler. Sonuçta kalan terimler,
+    `search()` tarafından hem katı (AND) hem gevşetilmiş (OR) sorgu
+    oluşturmak için kullanılır.
+    """
+    sanitized = _sanitize_fts_query(query)
+    if not sanitized:
+        return []
+    return [t for t in sanitized.split() if t.lower() not in _STOPWORDS]

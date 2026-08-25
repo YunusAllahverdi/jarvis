@@ -18,6 +18,16 @@ Test kapsamı:
 - _sanitize_fts_query — özel karakter temizliği
 - count yardımcısı
 
+Phase 1C-1 — doğal dil bellek getirme testleri:
+- search — İngilizce/Türkçe doğal dil soruları ilgili belleği bulur
+- search — çok terimli sorular çalışır
+- search — ilgisiz doğal dil soruları yanlış eşleşme yapmaz
+- search — soru işareti/noktalama FTS5 sözdizim hatasına yol açmaz
+- search — silinmiş/geçersizleştirilmiş kayıtlar doğal dil aramasında da dışlanır
+- search — limit doğal dil sorgularında da uygulanır
+- _extract_search_terms — dolgu kelime ayıklama
+- _sanitize_fts_query — genel noktalama temizliği + Unicode koruması
+
 Tüm testler geçici dosya tabanlı SQLite kullanır (pytest tmp_path fixture).
 Gerçek kullanıcı veritabanına dokunulmaz.
 """
@@ -36,7 +46,7 @@ from app.memory.record import (
     MemoryType,
     Temporality,
 )
-from app.memory.sqlite_store import SQLiteMemoryStore, _sanitize_fts_query
+from app.memory.sqlite_store import SQLiteMemoryStore, _extract_search_terms, _sanitize_fts_query
 from app.memory.store import MemoryStore
 
 
@@ -807,3 +817,195 @@ class TestCount:
         r2 = store.add(MemoryRecord(content="remove"))
         store.delete(r2.id)
         assert store.count(include_deleted=True) == 2
+
+
+# ---------------------------------------------------------------------------
+# 12. Phase 1C-1 — Doğal dil sorgusuyla bellek getirme
+# ---------------------------------------------------------------------------
+#
+# Strateji: önce katı (implicit AND) FTS5 sorgusu denenir; hiçbir sonuç
+# vermezse ve birden fazla anlamlı terim varsa, terimler OR ile birleştirilip
+# tekrar denenir. Dolgu kelimeler (İngilizce + Türkçe soru kalıpları) çıkarım
+# öncesinde elenir. Hiçbir alana özgü kelime (örn. "YKS") sabit kodlanmadı —
+# aşağıdaki testler bunu genel amaçlı bir mekanizma olarak doğrular.
+
+
+class TestNaturalLanguageQueries:
+    def test_english_question_retrieves_relevant_memory(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        results = store.search("What was my YKS goal?")
+        assert len(results) == 1
+        assert "YKS goal" in results[0].content
+
+    def test_english_question_variant_also_retrieves_relevant_memory(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        results = store.search("Do you remember my YKS target?")
+        assert len(results) == 1
+
+    def test_turkish_question_retrieves_relevant_memory(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        results = store.search("YKS hedefim neydi?")
+        assert len(results) == 1
+
+    def test_multi_term_natural_question_retrieves_relevant_memory(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        results = store.search("What are my TYT and AYT targets?")
+        assert len(results) == 1
+
+    def test_simple_keyword_query_still_works_unchanged(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        """Mevcut, basit tek kelimelik anahtar kelime aramaları etkilenmemeli."""
+        store.add(MemoryRecord(content="The user enjoys reading science fiction books."))
+        results = store.search("science")
+        assert len(results) == 1
+
+    def test_irrelevant_natural_language_query_returns_nothing(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        results = store.search("What is the weather like today?")
+        assert results == []
+
+    def test_irrelevant_query_does_not_pull_in_unrelated_memory(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        """OR-gevşetme yalnızca sorgu ile paylaşılan bir terim varken işe
+        yaramalı; hiçbir terim ortak değilse hiçbir kayıt dönmemeli."""
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        store.add(MemoryRecord(content="User likes pizza on weekends."))
+        results = store.search("What did I say about my exam target?")
+        assert results == []
+
+    def test_natural_language_query_respects_limit(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        for i in range(10):
+            store.add(MemoryRecord(content=f"User's goal number {i} is important."))
+        results = store.search("What was my goal again?", limit=3)
+        assert len(results) <= 3
+
+    def test_deleted_memory_excluded_from_natural_language_search(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        rec = store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        store.delete(rec.id)
+        results = store.search("What was my YKS goal?")
+        assert results == []
+
+    def test_invalidated_memory_excluded_from_natural_language_search(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        rec = store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        store.invalidate(rec.id)
+        results = store.search("What was my YKS goal?")
+        assert results == []
+
+    def test_empty_and_whitespace_queries_remain_safe(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
+        assert store.search("") == []
+        assert store.search("   ") == []
+        assert store.search("?") == []
+
+    def test_question_mark_and_punctuation_do_not_raise_or_swallow_matches(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        """Doğal dil noktalaması (?, ., !, ,) FTS5 sözdizim hatasına yol
+        açmamalı VE geçerli eşleşmeyi engellememeli."""
+        store.add(MemoryRecord(content="The user's favorite color is blue."))
+        for query in [
+            "What is my favorite color?",
+            "My favorite color, please?",
+            "favorite color!!",
+            "favorite... color.",
+        ]:
+            results = store.search(query)
+            assert isinstance(results, list)
+            assert len(results) == 1, f"query {query!r} should have matched"
+
+    def test_protocol_conformance_unchanged(self, store: SQLiteMemoryStore) -> None:
+        assert isinstance(store, MemoryStore)
+
+    def test_memory_type_filter_still_applies_to_natural_language_query(
+        self, store: SQLiteMemoryStore
+    ) -> None:
+        store.add(
+            MemoryRecord(
+                content="User's YKS goal is 100 TYT and 60 AYT.",
+                memory_type=MemoryType.GOAL,
+            )
+        )
+        store.add(
+            MemoryRecord(
+                content="User's YKS exam date is in June.",
+                memory_type=MemoryType.EVENT,
+            )
+        )
+        results = store.search("What was my YKS goal?", memory_type=MemoryType.GOAL)
+        assert len(results) == 1
+        assert results[0].memory_type == MemoryType.GOAL
+
+
+# ---------------------------------------------------------------------------
+# 13. _extract_search_terms — dolgu kelime ayıklama
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSearchTerms:
+    def test_removes_english_stopwords(self) -> None:
+        terms = _extract_search_terms("What was my YKS goal?")
+        assert terms == ["YKS", "goal"]
+
+    def test_removes_turkish_stopwords(self) -> None:
+        terms = _extract_search_terms("YKS hedefim neydi?")
+        assert "neydi" not in [t.lower() for t in terms]
+        assert "YKS" in terms
+
+    def test_all_stopwords_returns_empty_list(self) -> None:
+        assert _extract_search_terms("What is it?") == []
+
+    def test_single_content_word_query_is_unaffected(self) -> None:
+        assert _extract_search_terms("Istanbul") == ["Istanbul"]
+
+    def test_does_not_hardcode_domain_specific_words(self) -> None:
+        """Dolgu kelime listesi yalnızca genel fonksiyon kelimeleri içermeli;
+        rastgele bir alan kelimesi ('kitap', 'book') asla elenmemeli."""
+        terms = _extract_search_terms("What is my favorite book?")
+        assert "book" in [t.lower() for t in terms]
+
+
+# ---------------------------------------------------------------------------
+# 14. _sanitize_fts_query — genişletilmiş noktalama temizliği
+# ---------------------------------------------------------------------------
+
+
+class TestSanitizeFtsQueryPunctuation:
+    def test_question_mark_is_removed(self) -> None:
+        assert _sanitize_fts_query("goal?") == "goal"
+
+    def test_period_comma_exclamation_semicolon_removed(self) -> None:
+        assert _sanitize_fts_query("goal.") == "goal"
+        assert _sanitize_fts_query("goal,") == "goal"
+        assert _sanitize_fts_query("goal!") == "goal"
+        assert _sanitize_fts_query("goal;") == "goal"
+
+    def test_unicode_letters_still_preserved_with_punctuation(self) -> None:
+        result = _sanitize_fts_query("kullanıcı tercihleri?")
+        assert "kullanıcı" in result
+        assert "tercihleri" in result
+        assert "?" not in result
+
+    def test_digits_are_preserved(self) -> None:
+        result = _sanitize_fts_query("100 TYT and 60 AYT?")
+        assert "100" in result
+        assert "60" in result
