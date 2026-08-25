@@ -14,9 +14,13 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
-from app.services.conversation import InMemoryConversationStore
+from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
+from app.tools.base import PermissionLevel
+from app.tools.defaults import build_default_tool_registry
+from app.tools.executor import ToolExecutor
+from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,8 @@ class ServiceInfo(BaseModel):
 def create_app(
     settings: Settings | None = None,
     provider: LLMProvider | None = None,
-    conversation_store: InMemoryConversationStore | None = None,
+    conversation_store: ConversationStore | None = None,
+    tool_registry: ToolRegistry | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
@@ -46,10 +51,16 @@ def create_app(
     active_conversation_store = (
         conversation_store if conversation_store is not None else InMemoryConversationStore()
     )
+    active_tool_registry = (
+        tool_registry if tool_registry is not None else build_default_tool_registry()
+    )
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
         prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
+        tool_registry=active_tool_registry,
+        tool_executor=ToolExecutor(active_tool_registry, allowed_permissions={PermissionLevel.READ}),
+        context_message_limit=active_settings.conversation_context_limit,
     )
 
     @asynccontextmanager
@@ -63,6 +74,9 @@ def create_app(
             },
         )
         yield
+        # OllamaProvider gibi kapatılabilir provider'ları düzgün kapat.
+        if hasattr(active_provider, "aclose"):
+            await active_provider.aclose()
         logger.info("application_stopped", extra={"event": "application_stopped"})
 
     app = FastAPI(
@@ -72,6 +86,7 @@ def create_app(
     )
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
+    app.state.tool_registry = active_tool_registry
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
 

@@ -83,6 +83,21 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/chat" `
 
 Konuşmalar yalnızca uygulama süreci boyunca RAM'de saklanır; yeniden başlatıldığında silinir.
 
+## Tool System / Action Layer
+
+`POST /api/chat`, modelin gerek gördüğünde yalnızca kayıtlı bir tool'u çağırmasına izin verir. Akış `LLM → ToolRegistry → Pydantic input validation → permission check → tool result → LLM` şeklindedir. Yanıt formatı değişmez: final cevap ve `session_id` döner.
+
+Bu aşamada kayıtlı tool'ların tamamı salt-okunur `READ` seviyesindedir:
+
+- `get_time`
+- `get_date`
+- `calculator` — `eval()` veya Python çalıştırma kullanmaz.
+- `system_status`
+
+`WRITE` ve `DANGEROUS` permission seviyeleri gelecekteki onay/politika katmanı için mevcuttur; bu step'te etkin değildir. Shell komutu, dosya işlemi, Home Assistant veya computer control tool'u eklenmemiştir. Ayrıntılı tasarım için [tools dokümantasyonuna](docs/tools.md) bakın.
+
+Ollama'nın native `/api/chat` tool-calling sözleşmesi kullanılır. Bunun için tool-calling destekleyen bir model seçmeniz gerekir; örnek akış resmî [Ollama Tool Calling dokümantasyonunda](https://docs.ollama.com/capabilities/tool-calling) yer alır.
+
 ## Yapılandırma
 
 Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasından okunur. Örnekler için `.env.example` dosyasına bakın. `.env` sürüm kontrolüne alınmaz.

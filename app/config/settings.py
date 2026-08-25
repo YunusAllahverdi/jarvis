@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     ollama_model: str | None = None
     ollama_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     system_prompt_file: str | None = None
+    # Kaç konuşma mesajının LLM bağlamına dahil edileceği (system mesajı hariç).
+    # Sıfır veya negatif değer sınırı devre dışı bırakır.
+    conversation_context_limit: int = Field(default=40, ge=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",

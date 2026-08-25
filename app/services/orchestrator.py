@@ -3,9 +3,11 @@
 from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider, LLMResponseError
-from app.core.chat import ChatMessage
-from app.services.conversation import InMemoryConversationStore
-from app.services.prompts import SystemPromptLoader
+from app.core.chat import ChatMessage, ToolCall
+from app.services.conversation import ConversationStore
+from app.services.prompts import PromptProvider
+from app.tools.executor import ToolExecutor
+from app.tools.registry import ToolRegistry
 
 
 class ChatResult(BaseModel):
@@ -16,37 +18,100 @@ class ChatResult(BaseModel):
 
 
 class ChatOrchestrator:
-    """Text → LLM → text akışının uygulama katmanı."""
+    """Text, LLM ve yalnızca kayıtlı tool'lar arasındaki güvenli akış.
+
+    ConversationStore ve PromptProvider soyutlamalarına bağımlıdır; somut
+    implementasyonlara değil. Bu sayede bellek ve prompt katmanları bağımsız
+    olarak değiştirilebilir.
+    """
 
     def __init__(
         self,
         *,
         provider: LLMProvider,
-        conversation_store: InMemoryConversationStore,
-        prompt_loader: SystemPromptLoader,
+        conversation_store: ConversationStore,
+        prompt_loader: PromptProvider,
+        tool_registry: ToolRegistry,
+        tool_executor: ToolExecutor,
+        max_tool_rounds: int = 4,
+        context_message_limit: int = 0,
     ) -> None:
+        """
+        Args:
+            provider: LLM metin üretici.
+            conversation_store: Oturum geçmişini saklayan ve döndüren sağlayıcı.
+            prompt_loader: System prompt'unu sağlayan sağlayıcı.
+            tool_registry: Kullanılabilir tool tanımlarını tutar.
+            tool_executor: Tool'ları güvenli biçimde çalıştırır.
+            max_tool_rounds: LLM'e izin verilen maksimum tool-call turu.
+            context_message_limit: LLM bağlamına gönderilecek maksimum geçmiş
+                mesaj sayısı (system mesajı hariç). 0 veya negatif = sınırsız.
+                Bu limit yalnızca LLM bağlamını yönetir; kalıcı geçmişi silmez.
+        """
         self._provider = provider
         self._conversation_store = conversation_store
         self._prompt_loader = prompt_loader
+        self._tool_registry = tool_registry
+        self._tool_executor = tool_executor
+        self._max_tool_rounds = max_tool_rounds
+        self._context_message_limit = context_message_limit
+
+    def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
+        """Geçmiş mesajları context window limitine göre kırpar.
+
+        Yalnızca LLM'e gönderilecek listeyi kırpar; depodaki gerçek geçmişe
+        dokunmaz. Limit 0 veya negatifse kırpma yapılmaz.
+        """
+        if self._context_message_limit <= 0:
+            return messages
+        return messages[-self._context_message_limit :]
 
     async def respond(self, message: str, session_id: str | None = None) -> ChatResult:
         """Kullanıcı mesajına sağlayıcı cevabı üretir ve konuşmayı günceller."""
 
         conversation = self._conversation_store.get_or_create(session_id)
         user_message = ChatMessage(role="user", content=message)
-        provider_messages = [
+
+        trimmed_history = self._trim_context(conversation.messages)
+        provider_messages: list[ChatMessage] = [
             ChatMessage(role="system", content=self._prompt_loader.load()),
-            *conversation.messages,
+            *trimmed_history,
             user_message,
         ]
-        response = (await self._provider.generate(provider_messages)).strip()
+        new_history: list[ChatMessage] = [user_message]
+        tool_definitions = self._tool_registry.list_definitions()
 
-        if not response:
-            raise LLMResponseError("LLM sağlayıcısı boş bir yanıt döndürdü.")
+        for _ in range(self._max_tool_rounds):
+            response = await self._provider.generate_with_tools(provider_messages, tool_definitions)
 
-        assistant_message = ChatMessage(role="assistant", content=response)
-        self._conversation_store.append_messages(
-            conversation.session_id,
-            [user_message, assistant_message],
-        )
-        return ChatResult(response=response, session_id=conversation.session_id)
+            if not response.tool_calls:
+                final_response = response.content.strip()
+                if not final_response:
+                    raise LLMResponseError("LLM sağlayıcısı boş bir yanıt döndürdü.")
+                assistant_message = ChatMessage(role="assistant", content=final_response)
+                new_history.append(assistant_message)
+                self._conversation_store.append_messages(conversation.session_id, new_history)
+                return ChatResult(response=final_response, session_id=conversation.session_id)
+
+            tool_call_message = ChatMessage(
+                role="assistant",
+                content=response.content,
+                tool_calls=response.tool_calls,
+            )
+            new_history.append(tool_call_message)
+            provider_messages.append(tool_call_message)
+
+            tool_result_messages = await self._execute_tool_calls(response.tool_calls)
+            new_history.extend(tool_result_messages)
+            provider_messages.extend(tool_result_messages)
+
+        raise LLMResponseError("LLM izin verilen tool-call turu sınırını aştı.")
+
+    async def _execute_tool_calls(self, calls: list[ToolCall]) -> list[ChatMessage]:
+        """Her tool call'u sadece registry üzerinden çalıştırır."""
+
+        result_messages: list[ChatMessage] = []
+        for call in calls:
+            result = await self._tool_executor.execute(call)
+            result_messages.append(result.as_chat_message())
+        return result_messages

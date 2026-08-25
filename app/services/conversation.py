@@ -1,7 +1,8 @@
-"""RAM üzerinde oturum bazlı text conversation yönetimi."""
+"""Konuşma oturumu yönetimi: soyut sözleşme ve RAM tabanlı implementasyon."""
 
 from collections.abc import Iterable
 from threading import RLock
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -16,10 +17,28 @@ class Conversation(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
 
 
+@runtime_checkable
+class ConversationStore(Protocol):
+    """Konuşma geçmişi sağlayıcıları için kararlı arayüz.
+
+    Implementasyonlar RAM, SQLite, Redis veya başka bir depolama
+    mekanizması kullanabilir; ChatOrchestrator yalnızca bu sözleşmeye bağımlıdır.
+    """
+
+    def get_or_create(self, session_id: str | None = None) -> Conversation:
+        """Var olan oturumu veya yeni bir oturumu kopya olarak döndürür."""
+        ...
+
+    def append_messages(self, session_id: str, messages: Iterable[ChatMessage]) -> None:
+        """Bir oturuma mesajları atomik olarak ekler."""
+        ...
+
+
 class InMemoryConversationStore:
     """Süreç ömrü boyunca conversation'ları RAM'de saklar.
 
     Bu store kalıcı değildir; uygulama yeniden başladığında tüm oturumlar silinir.
+    ConversationStore Protocol'ünü implemente eder.
     """
 
     def __init__(self) -> None:

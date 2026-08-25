@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from app.core.chat import ChatMessage
+from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 
 
 class LLMProviderError(RuntimeError):
@@ -24,7 +24,14 @@ class LLMResponseError(LLMProviderError):
 
 @runtime_checkable
 class LLMProvider(Protocol):
-    """Her metin LLM sağlayıcısının uygulaması gereken küçük arayüz."""
+    """Metin üretimi ve tool-calling sağlayıcıları için küçük arayüz."""
 
     async def generate(self, messages: Sequence[ChatMessage]) -> str:
         """Verilen konuşma mesajları için tek bir asistan cevabı üretir."""
+
+    async def generate_with_tools(
+        self,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[ToolDefinition],
+    ) -> LLMResponse:
+        """Tool tanımlarıyla birlikte bir LLM turu üretir."""
