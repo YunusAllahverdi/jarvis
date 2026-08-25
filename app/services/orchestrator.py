@@ -68,6 +68,16 @@ class ChatOrchestrator:
         self._max_tool_rounds = max_tool_rounds
         self._context_message_limit = context_message_limit
 
+    def set_memory_service(self, memory_service: MemoryWriteService | None) -> None:
+        """Bellek servisini kurucudan sonra bağlar (geç bağlama).
+
+        create_app()'in üretim yolunda, SQLite dosyasına dokunan gerçek bellek
+        yığını modül import anında değil, uygulama fiilen başlatıldığında
+        (lifespan startup) kurulur. Bu metod, o an henüz mevcut olmayan
+        servisin orchestrator'a sonradan bağlanmasını sağlar.
+        """
+        self._memory_service = memory_service
+
     def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Geçmiş mesajları context window limitine göre kırpar.
 

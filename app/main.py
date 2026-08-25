@@ -68,11 +68,16 @@ def create_app(
         tool_registry if tool_registry is not None else build_default_tool_registry()
     )
 
-    active_memory_service = memory_service
-    if active_memory_service is None and using_default_provider:
-        memory_store = SQLiteMemoryStore(active_settings.memory_db_path)
-        memory_extractor = MemoryExtractor(provider=active_provider)
-        active_memory_service = MemoryWriteService(extractor=memory_extractor, store=memory_store)
+    # Çağıran memory_service'i açıkça verdiyse hemen kullanılır (I/O maliyetini
+    # zaten çağıran üstlenmiştir). Aksi halde — provider enjekte edilmemişse —
+    # gerçek bellek yığını kurulacaktır, ANCAK bu kurulum SQLite dosyasına
+    # dokunduğundan create_app() içinde hemen değil, uygulama fiilen
+    # başlatıldığında (lifespan startup, aşağıda) yapılır. Bu ayrım sayesinde
+    # `app.main`'i içe aktarmak (import) — modül seviyesindeki `app = create_app()`
+    # satırı dahil — kullanıcının kalıcı bellek veritabanını asla oluşturmaz;
+    # veritabanı yalnızca uygulama gerçekten sunuma başladığında oluşur.
+    initial_memory_service = memory_service
+    auto_wire_memory_on_startup = initial_memory_service is None and using_default_provider
 
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
@@ -80,12 +85,19 @@ def create_app(
         prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
         tool_registry=active_tool_registry,
         tool_executor=ToolExecutor(active_tool_registry, allowed_permissions={PermissionLevel.READ}),
-        memory_service=active_memory_service,
+        memory_service=initial_memory_service,
         context_message_limit=active_settings.conversation_context_limit,
     )
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
+        if auto_wire_memory_on_startup:
+            memory_store = SQLiteMemoryStore(active_settings.memory_db_path)
+            memory_extractor = MemoryExtractor(provider=active_provider)
+            startup_memory_service = MemoryWriteService(extractor=memory_extractor, store=memory_store)
+            chat_orchestrator.set_memory_service(startup_memory_service)
+            app_instance.state.memory_service = startup_memory_service
+
         logger.info(
             "application_started",
             extra={
@@ -108,7 +120,8 @@ def create_app(
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
     app.state.tool_registry = active_tool_registry
-    app.state.memory_service = active_memory_service
+    # auto_wire_memory_on_startup ise lifespan başlayana kadar None kalır.
+    app.state.memory_service = initial_memory_service
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
 
