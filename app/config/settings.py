@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     # Boş bırakılırsa platforma özgü kullanıcı veri dizini kullanılır.
     memory_db_path: str = Field(default_factory=_default_memory_db_path)
 
+    # Agent karar katmanının hangi politikayı kullanacağı.
+    # "rule_based": deterministik, LLM çağırmaz (varsayılan).
+    # "llm"       : kararı LLM'e verdirir, çıktıyı deterministik doğrular.
+    # Varsayılanın deterministik olması bilinçlidir: LLM politikası tur başına
+    # ek bir sağlayıcı çağrısı demektir ve açıkça seçilmelidir.
+    agent_decision_policy: Literal["rule_based", "llm"] = "rule_based"
+
+    # Karar katmanının sohbet akışına bağlanıp bağlanmayacağı.
+    # Kapatıldığında agent yalnızca kendi API'si üzerinden kullanılabilir;
+    # sohbet akışı bu bileşeni hiç çağırmaz.
+    agent_chat_integration: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

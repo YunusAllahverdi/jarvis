@@ -258,6 +258,7 @@ class ContextBuilder:
                 name=tool.name,
                 description=tool.description,
                 permission=tool.permission,
+                input_schema=tool.definition.input_schema,
                 requires_confirmation=tool.permission not in self._allowed_permissions,
             )
             for tool in tools

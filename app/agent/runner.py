@@ -11,18 +11,28 @@ Mimari kurallar:
 - Bir eylemin başarısızlığı planı çökertmez; her eylem kendi sonucunu üretir
   ve toplu durum sonuçlardan deterministik olarak türetilir.
 
-Bilinen sınırlama — ADIMLAR ARASI VERİ AKIŞI YOK:
-    Çok adımlı bir planda adımlar sırayla çalışır ama bir adımın çıktısı bir
-    sonraki adımın girdisine BAĞLANMAZ. Bu bilinçlidir: gerçek bir planlayıcı
-    (bağımlılık grafiği, koşullu dallanma) sonraki bir fazın konusudur ve
-    burada sahte bir yerine koyma mekanizması uydurulmadı.
+ADIMLAR ARASI VERİ AKIŞI:
+    Bir adımın argümanı, kendisinden ÖNCEKİ bir adımın sonucundan bir değere
+    başvurabilir (bkz. `app.agent.references`). Başvuru kod değil veridir;
+    çözümleme yalnızca sözlük anahtarları ve liste indeksleri üzerinde yürür.
+    Çözülemeyen bir başvuruda adım ÇALIŞTIRILMAZ — yanlış argümanla tool
+    çağırmaktansa adımı başarısız saymak tercih edilir.
+
+    Hâlâ kapsam dışı: koşullu dallanma ve yeniden planlama (replanning).
+    Plan, karar anında sabittir; yürütme sırasında büyümez.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.agent.models import ActionOutcome, AgentDecision, AgentResult, AgentStatus, status_for
+from app.agent.references import (
+    ERROR_UNRESOLVED_REFERENCE,
+    ReferenceError,
+    resolve_arguments,
+)
 from app.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -66,7 +76,40 @@ class AgentRunner:
                 status=AgentStatus.PENDING_CONFIRMATION,
             )
 
-        outcomes = [await self._execute_action(decision, action) for action in decision.actions]
+        outcomes: list[ActionOutcome] = []
+        # Önceki adımların sonuç verileri; başarısız adımlar için None.
+        # Bu liste aynı zamanda geriye başvuru sınırını taşır: bir adım
+        # yalnızca kendisinden önce çalışmış adımlara başvurabilir.
+        previous_results: list[dict[str, Any] | None] = []
+
+        for action in decision.actions:
+            try:
+                arguments = resolve_arguments(
+                    action.arguments, previous_results=previous_results
+                )
+            except ReferenceError as exc:
+                logger.warning(
+                    "agent_action_reference_unresolved",
+                    extra={"tool_name": action.tool_name, "error": str(exc)},
+                )
+                outcomes.append(
+                    ActionOutcome(
+                        tool_name=action.tool_name,
+                        success=False,
+                        error_code=ERROR_UNRESOLVED_REFERENCE,
+                        error_message=(
+                            "Bir önceki adımın sonucuna yapılan başvuru çözülemedi; "
+                            "bu adım çalıştırılmadı."
+                        ),
+                    )
+                )
+                previous_results.append(None)
+                continue
+
+            outcome = await self._execute_action(decision, action, arguments)
+            outcomes.append(outcome)
+            previous_results.append(outcome.data if outcome.success else None)
+
         status = status_for(outcomes)
         logger.info(
             "agent_execution_complete",
@@ -79,10 +122,21 @@ class AgentRunner:
         )
         return AgentResult(decision=decision, outcomes=outcomes, status=status)
 
-    async def _execute_action(self, decision: AgentDecision, action) -> ActionOutcome:  # noqa: ANN001
-        """Tek bir eylemi yürütür; hiçbir hata dışarı sızmaz."""
+    async def _execute_action(
+        self,
+        decision: AgentDecision,
+        action,  # noqa: ANN001
+        arguments: dict[str, Any],
+    ) -> ActionOutcome:
+        """Tek bir eylemi çözülmüş argümanlarla yürütür; hiçbir hata dışarı sızmaz.
+
+        Argümanlar burada yeniden doğrulanmaz: şema doğrulaması ve izin
+        kontrolü `ToolExecutor` içinde yapılır ve o sınır atlanmaz.
+        """
+        call = action.as_tool_call()
+        call.arguments = arguments
         try:
-            result = await self._tool_executor.execute(action.as_tool_call())
+            result = await self._tool_executor.execute(call)
         except Exception:  # noqa: BLE001
             # ToolExecutor sözleşmesi gereği buraya düşülmemeli; yine de bir
             # savunma katmanı bırakıldı, çünkü tek bir tool'un beklenmedik

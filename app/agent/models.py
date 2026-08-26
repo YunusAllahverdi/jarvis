@@ -43,6 +43,9 @@ class Intent(StrEnum):
     RECALL = "recall"
     """Kullanıcı hakkında bilinenleri/geçmişi getirme isteği."""
 
+    INFORMATION_REQUEST = "information_request"
+    """Tool ile karşılanan, yukarıdakilere girmeyen genel bir bilgi isteği."""
+
     CONVERSATION = "conversation"
     """Yapılacak bir eylem yok — normal sohbet cevabı yeterli."""
 
@@ -81,6 +84,15 @@ class ToolDescriptor(BaseModel):
     name: str = Field(pattern=_TOOL_NAME_PATTERN)
     description: str
     permission: PermissionLevel
+
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    """Tool'un argüman sözleşmesi (JSON Schema).
+
+    Karar veren tarafın (kural tabanlı veya LLM) doğru argüman üretebilmesi
+    için gereklidir. Yalnızca SÖZLEŞME taşınır — tool'un implementasyonu,
+    dosya yolu veya iç durumu asla buraya girmez.
+    """
+
     requires_confirmation: bool = False
     """Bu tool'un izin seviyesi mevcut oturumda etkin değilse True.
 

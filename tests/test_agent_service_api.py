@@ -392,14 +392,54 @@ class TestApplicationWiring:
 
 
 class TestChatRemainsUnaffected:
-    def test_orchestrator_has_no_reference_to_the_agent(self) -> None:
+    def test_agent_is_an_optional_orchestrator_dependency(self) -> None:
+        """Agent artık sohbet akışına BAĞLANABİLİR (LLM karar katmanı
+        milestone'u), ama bağlantı opsiyoneldir ve varsayılanı None'dır.
+
+        Bu test, önceki milestone'daki "orchestrator agent'ı hiç tanımıyor"
+        iddiasının yerini alır: o iddia entegrasyonla birlikte geçersizleşti,
+        ama korunması gereken güvenlik özelliği aynı kaldı — agent olmadan
+        sohbet bit düzeyinde eskisi gibi çalışmalı.
+        """
+        import inspect as inspect_module
+
+        from app.services.orchestrator import ChatOrchestrator
+
+        signature = inspect_module.signature(ChatOrchestrator.__init__)
+        assert signature.parameters["agent_service"].default is None
+
+    def test_orchestrator_does_not_reach_into_agent_internals(self) -> None:
+        """Orchestrator yalnızca AgentService cephesini kullanmalı; agent'ın
+        politikasına, runner'ına veya bağlam kurucusuna uzanmamalı.
+
+        Not: Orchestrator'ın KENDİ `ToolRegistry`'si en baştan beri vardır ve
+        agent'ınkinden ayrı bir örnektir — burada denetlenen, agent'ın iç
+        bileşenlerine erişim olmamasıdır.
+        """
         import app.services.orchestrator as orchestrator_module
 
         source = inspect.getsource(orchestrator_module)
 
-        assert "AgentService" not in source
-        assert "agent" not in source.lower()
         assert "DecisionPolicy" not in source
+        assert "AgentRunner" not in source
+        assert "ContextBuilder" not in source
+        assert "._policy" not in source
+        assert "._runner" not in source
+        assert "._context_builder" not in source
+
+    def test_orchestrator_without_an_agent_behaves_exactly_as_before(
+        self, tmp_path: Path
+    ) -> None:
+        """Agent verilmediğinde LLM'e giden mesaj yapısı değişmemeli."""
+        provider = _FakeChatProvider()
+        app = create_app(settings=_make_settings(tmp_path), provider=provider)
+
+        with TestClient(app) as client:
+            assert client.post("/api/chat", json={"message": "merhaba"}).status_code == 200
+
+        assert app.state.chat_orchestrator._agent_service is None
+        sent = provider.calls[0]
+        assert [m.role for m in sent] == ["system", "user"]
 
     def test_chat_tool_surface_is_unchanged_by_the_agent(self, tmp_path: Path) -> None:
         """Agent'ın tool'ları LLM'in sohbette gördüğü yüzeye SIZMAMALI."""

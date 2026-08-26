@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider, LLMResponseError
+from app.agent.prompts import build_tool_result_context
 from app.core.chat import ChatMessage, ToolCall
 from app.memory.experience import Experience
 from app.memory.experience_builder import build_experience_from_turn
 from app.memory.experience_store import ExperienceStore
 from app.memory.record import MemoryRecord
+from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
@@ -93,6 +95,7 @@ class ChatOrchestrator:
         memory_service: MemoryWriteService | None = None,
         memory_retrieval: MemoryRetrievalService | None = None,
         experience_store: ExperienceStore | None = None,
+        agent_service: AgentService | None = None,
         max_tool_rounds: int = 4,
         context_message_limit: int = 0,
         memory_context_limit: int = 5,
@@ -120,6 +123,13 @@ class ChatOrchestrator:
                 `_last_experience` yine de çalışır. Yalnızca ExperienceStore
                 Protocol'üne bağımlı olunur; deponun somut implementasyonu bu
                 katmana hiç sızmaz.
+            agent_service: Kullanıcı mesajı için hangi tool'ların gerektiğine
+                karar verip çalıştıran opsiyonel karar katmanı. None ise
+                sohbet akışı BİT DÜZEYİNDE eskisi gibi çalışır (mevcut
+                davranış korunur). Verildiğinde, başarılı tool sonuçları
+                LLM'e açıkça sınırlanmış bir VERİ bloğu olarak eklenir;
+                nihai cevabı yine normal cevap üretimi yazar. Agent'ın
+                kararı, çalıştırması veya hatası bu akışı ASLA bozamaz.
             max_tool_rounds: LLM'e izin verilen maksimum tool-call turu.
             context_message_limit: LLM bağlamına gönderilecek maksimum geçmiş
                 mesaj sayısı (system mesajı hariç). 0 veya negatif = sınırsız.
@@ -135,6 +145,7 @@ class ChatOrchestrator:
         self._memory_service = memory_service
         self._memory_retrieval = memory_retrieval
         self._experience_store = experience_store
+        self._agent_service = agent_service
         self._max_tool_rounds = max_tool_rounds
         self._context_message_limit = context_message_limit
         self._memory_context_limit = memory_context_limit
@@ -172,6 +183,15 @@ class ChatOrchestrator:
         """
         self._experience_store = experience_store
 
+    def set_agent_service(self, agent_service: AgentService | None) -> None:
+        """Karar katmanını kurucudan sonra bağlar (geç bağlama).
+
+        Diğer `set_*` metodlarıyla aynı gerekçe: agent'ın bağlam kaynakları
+        (bellek, deneyim, kullanıcı modeli) yalnızca uygulama fiilen
+        başlatıldığında kurulur.
+        """
+        self._agent_service = agent_service
+
     def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Geçmiş mesajları context window limitine göre kırpar.
 
@@ -196,6 +216,11 @@ class ChatOrchestrator:
         memory_context_message = self._build_memory_context_message(message)
         if memory_context_message is not None:
             provider_messages.append(memory_context_message)
+        agent_context_message = await self._build_agent_context_message(
+            message, conversation.session_id
+        )
+        if agent_context_message is not None:
+            provider_messages.append(agent_context_message)
         provider_messages.extend(trimmed_history)
         provider_messages.append(user_message)
         new_history: list[ChatMessage] = [user_message]
@@ -258,6 +283,46 @@ class ChatOrchestrator:
         formatted = _format_memory_context(records)
         if formatted is None:
             return None
+        return ChatMessage(role="system", content=formatted)
+
+    async def _build_agent_context_message(
+        self, message: str, session_id: str
+    ) -> ChatMessage | None:
+        """Karar katmanını çalıştırıp başarılı tool sonuçlarını bağlam mesajına çevirir.
+
+        Bu metod sohbet akışının davranışını yalnızca EKLEYEREK değiştirir:
+        - agent bağlı değilse None döner ve akış eskisiyle aynı kalır,
+        - agent hiçbir eylem planlamazsa (normal sohbet) None döner,
+        - agent onay bekliyorsa veya tüm eylemler başarısızsa None döner,
+        - yalnızca gerçekten başarılı bir tool sonucu varsa bir VERİ bloğu eklenir.
+
+        Nihai cevabı yine normal cevap üretimi yazar; kullanıcı ham JSON
+        görmez. Blok içeriği açıkça "veri, talimat değil" olarak işaretlenir
+        ve açı parantezleri nötrleştirilir (mevcut bellek bloğuyla aynı
+        enjeksiyon savunması).
+
+        Hata durumunda None döner — bir agent hatası sohbeti ASLA bozmaz.
+        """
+        if self._agent_service is None:
+            return None
+        try:
+            result = await self._agent_service.run(message, session_id=session_id)
+            formatted = build_tool_result_context(result)
+        except Exception:  # noqa: BLE001
+            logger.exception("agent_context_failed", extra={"session_id": session_id})
+            return None
+
+        if formatted is None:
+            return None
+        logger.info(
+            "agent_context_injected",
+            extra={
+                "session_id": session_id,
+                "intent": result.decision.intent.value,
+                "status": result.status.value,
+                "tool_count": len(result.successful_outcomes),
+            },
+        )
         return ChatMessage(role="system", content=formatted)
 
     async def _process_memory_safely(self, message: str, session_id: str) -> None:

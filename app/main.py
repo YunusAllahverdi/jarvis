@@ -11,7 +11,8 @@ from pydantic import BaseModel
 from app.adapters.llm.base import LLMProvider
 from app.adapters.llm.ollama import OllamaProvider
 from app.agent.context import ContextBuilder
-from app.agent.policy import RuleBasedDecisionPolicy
+from app.agent.llm_policy import LLMDecisionPolicy
+from app.agent.policy import DecisionPolicy, RuleBasedDecisionPolicy
 from app.agent.runner import AgentRunner
 from app.api.routes.agent import router as agent_router
 from app.api.routes.chat import router as chat_router
@@ -88,12 +89,32 @@ olduğu yerdir.
 """
 
 
+def _build_decision_policy(
+    *, policy_name: str, provider: LLMProvider, model_label: str | None
+) -> DecisionPolicy:
+    """Ayarlara göre karar politikasını seçer.
+
+    `RuleBasedDecisionPolicy` her durumda korunur: "llm" seçildiğinde bile
+    yedek (fallback) politika olarak verilir, böylece sağlayıcı erişilemez
+    olduğunda veya çıktısı reddedildiğinde sistem deterministik davranışa
+    düşer. Yeni bir LLM istemcisi yazılmaz; mevcut `LLMProvider` soyutlaması
+    olduğu gibi kullanılır.
+    """
+    rule_based = RuleBasedDecisionPolicy()
+    if policy_name != "llm":
+        return rule_based
+    return LLMDecisionPolicy(
+        provider=provider, fallback=rule_based, model_label=model_label
+    )
+
+
 def _build_agent_stack(
     *,
     conversation_store: ConversationStore,
     memory_retrieval: MemoryRetrievalService | None,
     experience_store: ExperienceStore | None,
     user_model: UserModelService | None,
+    policy: DecisionPolicy | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -128,7 +149,7 @@ def _build_agent_stack(
     )
     return AgentService(
         context_builder=context_builder,
-        policy=RuleBasedDecisionPolicy(),
+        policy=policy or RuleBasedDecisionPolicy(),
         runner=AgentRunner(
             tool_executor=ToolExecutor(
                 agent_registry, allowed_permissions=_AGENT_ALLOWED_PERMISSIONS
@@ -245,6 +266,11 @@ def create_app(
         memory_service=initial_memory_service,
         memory_retrieval=initial_memory_retrieval,
         experience_store=initial_experience_store,
+        # Sohbet entegrasyonu ayarla kapatılabilir: agent API'si açık kalırken
+        # sohbet akışının karar katmanını hiç çağırmaması istenebilir.
+        agent_service=(
+            initial_agent_service if active_settings.agent_chat_integration else None
+        ),
         context_message_limit=active_settings.conversation_context_limit,
     )
 
@@ -308,12 +334,22 @@ def create_app(
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
             # Kurulmamış olan kaynak None geçilir; agent bunu sorunsuz karşılar.
-            app_instance.state.agent_service = _build_agent_stack(
+            startup_agent = _build_agent_stack(
                 conversation_store=active_conversation_store,
                 memory_retrieval=app_instance.state.memory_retrieval,
                 experience_store=app_instance.state.experience_store,
                 user_model=app_instance.state.user_model_service,
+                policy=_build_decision_policy(
+                    policy_name=active_settings.agent_decision_policy,
+                    provider=active_provider,
+                    model_label=active_settings.ollama_model,
+                ),
             )
+            app_instance.state.agent_service = startup_agent
+            # Sohbet entegrasyonu ayrı bir anahtardır: agent API'si açık
+            # kalırken sohbet akışının agent'ı hiç çağırmaması istenebilir.
+            if active_settings.agent_chat_integration:
+                chat_orchestrator.set_agent_service(startup_agent)
 
         logger.info(
             "application_started",
