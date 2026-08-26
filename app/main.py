@@ -12,18 +12,24 @@ from app.adapters.llm.base import LLMProvider
 from app.adapters.llm.ollama import OllamaProvider
 from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
+from app.api.routes.user_model import router as user_model_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.learning.sqlite_trait_store import SQLiteUserTraitStore
+from app.learning.trait_store import UserTraitStore
 from app.memory.experience_store import ExperienceStore
 from app.memory.extractor import MemoryExtractor
 from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
+from app.memory.store import MemoryStore
 from app.services.conversation import ConversationStore, InMemoryConversationStore
+from app.services.learning_service import LearningService
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 from app.services.memory_temporal import MemoryTemporalService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
+from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
@@ -40,6 +46,33 @@ class ServiceInfo(BaseModel):
     environment: str
 
 
+def _build_user_model_stack(
+    *,
+    trait_store: UserTraitStore | None,
+    memory_store: MemoryStore | None,
+    experience_store: ExperienceStore | None,
+) -> tuple[LearningService | None, UserModelService | None]:
+    """Öğrenme/kullanıcı modeli servislerini mevcut depolardan kurar.
+
+    Trait deposu yoksa kullanıcı modeli hiç kurulmaz (ikisi de None döner) —
+    yazacak yeri olmayan bir öğrenme servisi anlamsızdır. Kaynak depolar
+    (bellek/deneyim) ise isteğe bağlıdır: eksik olan kaynak yalnızca ilgili
+    trait ailesinin üretilmemesi anlamına gelir, hata değildir.
+    """
+    if trait_store is None:
+        return None, None
+    learning_service = LearningService(
+        trait_store=trait_store,
+        memory_store=memory_store,
+        experience_store=experience_store,
+    )
+    user_model_service = UserModelService(
+        trait_store=trait_store,
+        experience_store=experience_store,
+    )
+    return learning_service, user_model_service
+
+
 def create_app(
     settings: Settings | None = None,
     provider: LLMProvider | None = None,
@@ -48,6 +81,8 @@ def create_app(
     memory_service: MemoryWriteService | None = None,
     memory_retrieval: MemoryRetrievalService | None = None,
     experience_store: ExperienceStore | None = None,
+    memory_store: MemoryStore | None = None,
+    user_trait_store: UserTraitStore | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
@@ -111,6 +146,24 @@ def create_app(
         initial_experience_store is None and using_default_provider
     )
 
+    # Öğrenme/kullanıcı modeli katmanı da aynı ilkeyi izler ve Memory ile
+    # Experience'tan BAĞIMSIZ bir bayrağa sahiptir. Kullanıcı modeli türetilmiş
+    # bir katmandır: kaynakları (bellek/deneyim) eksik olsa bile kurulabilir,
+    # yalnızca üretebildiği trait ailesi daralır.
+    initial_memory_store = memory_store
+    initial_user_trait_store = user_trait_store
+    auto_wire_user_model_on_startup = (
+        initial_user_trait_store is None and using_default_provider
+    )
+
+    # Çağıran depoları açıkça verdiyse kullanıcı modeli hemen kurulur; aksi
+    # halde (otomatik kurulum yolunda) lifespan startup'ta kurulacaktır.
+    initial_learning_service, initial_user_model_service = _build_user_model_stack(
+        trait_store=initial_user_trait_store,
+        memory_store=initial_memory_store,
+        experience_store=initial_experience_store,
+    )
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
@@ -160,6 +213,25 @@ def create_app(
             chat_orchestrator.set_experience_store(startup_experience_store)
             app_instance.state.experience_store = startup_experience_store
 
+        if auto_wire_user_model_on_startup:
+            # Öğrenme katmanı en son kurulur çünkü kaynakları (bellek ve
+            # deneyim depoları) yukarıdaki bloklarda oluşur — burada artık
+            # app_instance.state üzerinden hazır hâlde okunabilirler.
+            # Kaynaklardan biri kurulmamışsa (çağıran elle enjekte ettiği
+            # için) None geçilir; öğrenme servisi bunu sorunsuz karşılar.
+            #
+            # Trait deposu da AYNI fiziksel SQLite dosyasını kullanır —
+            # üçüncü bir veritabanı dosyası oluşturulmaz.
+            startup_trait_store = SQLiteUserTraitStore(active_settings.memory_db_path)
+            startup_learning, startup_user_model = _build_user_model_stack(
+                trait_store=startup_trait_store,
+                memory_store=app_instance.state.memory_store,
+                experience_store=app_instance.state.experience_store,
+            )
+            app_instance.state.user_trait_store = startup_trait_store
+            app_instance.state.learning_service = startup_learning
+            app_instance.state.user_model_service = startup_user_model
+
         logger.info(
             "application_started",
             extra={
@@ -185,12 +257,18 @@ def create_app(
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
     app.state.memory_retrieval = initial_memory_retrieval
-    app.state.memory_store = None
+    app.state.memory_store = initial_memory_store
     app.state.memory_temporal = None
     # Aynı şekilde: auto_wire_experience_on_startup ise lifespan başlayana kadar None kalır.
     app.state.experience_store = initial_experience_store
+    # Öğrenme/kullanıcı modeli katmanı: auto_wire_user_model_on_startup ise
+    # lifespan başlayana kadar None kalır. API uçları None durumunda 503 döner.
+    app.state.user_trait_store = initial_user_trait_store
+    app.state.learning_service = initial_learning_service
+    app.state.user_model_service = initial_user_model_service
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
+    app.include_router(user_model_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:
