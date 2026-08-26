@@ -10,6 +10,10 @@ from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider
 from app.adapters.llm.ollama import OllamaProvider
+from app.agent.context import ContextBuilder
+from app.agent.policy import RuleBasedDecisionPolicy
+from app.agent.runner import AgentRunner
+from app.api.routes.agent import router as agent_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.api.routes.user_model import router as user_model_router
@@ -22,6 +26,7 @@ from app.memory.extractor import MemoryExtractor
 from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
+from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.learning_service import LearningService
 from app.services.memory_retrieval import MemoryRetrievalService
@@ -31,7 +36,7 @@ from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
-from app.tools.defaults import build_default_tool_registry
+from app.tools.defaults import build_default_tool_registry, register_context_tools
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 
@@ -73,6 +78,65 @@ def _build_user_model_stack(
     return learning_service, user_model_service
 
 
+_AGENT_ALLOWED_PERMISSIONS = frozenset({PermissionLevel.READ})
+"""Agent'ın onay istemeden çalıştırabileceği izin seviyeleri.
+
+Bu kümenin dışındaki her tool, bağlama `requires_confirmation=True` ile girer
+ve onay alınmadan ASLA çalıştırılmaz. Bu fazda yalnızca READ tool'ları vardır;
+küme, ileride WRITE/DANGEROUS tool'lar eklendiğinde onay sınırının hazır
+olduğu yerdir.
+"""
+
+
+def _build_agent_stack(
+    *,
+    conversation_store: ConversationStore,
+    memory_retrieval: MemoryRetrievalService | None,
+    experience_store: ExperienceStore | None,
+    user_model: UserModelService | None,
+) -> AgentService:
+    """Agent karar katmanını mevcut public servislerden kurar.
+
+    ÖNEMLİ — AYRI TOOL REGISTRY: Agent kendi `ToolRegistry` ÖRNEĞİNİ alır
+    (ayrı bir soyutlama değil, aynı sınıfın ikinci örneği). Böylece agent'a
+    eklenen `memory_search`/`user_profile` tool'ları, LLM'in normal sohbet
+    sırasında gördüğü tool yüzeyini DEĞİŞTİRMEZ ve mevcut sohbet davranışı
+    bit düzeyinde korunur. İleride tek bir registry'de birleştirmek istenirse
+    bu, tek satırlık bir değişikliktir.
+
+    Kaynak servisler isteğe bağlıdır: verilmeyen kaynak yalnızca ilgili
+    bağlam bölümünün boş kalmasına ve ilgili tool'un kaydedilmemesine yol açar.
+    """
+    agent_registry = build_default_tool_registry()
+    registered = register_context_tools(
+        agent_registry, memory_retrieval=memory_retrieval, user_model=user_model
+    )
+    context_builder = ContextBuilder(
+        tool_registry=agent_registry,
+        allowed_permissions=_AGENT_ALLOWED_PERMISSIONS,
+        conversation_store=conversation_store,
+        memory_retrieval=memory_retrieval,
+        experience_store=experience_store,
+        user_model=user_model,
+    )
+    logger.info(
+        "agent_stack_built",
+        extra={
+            "context_tools": registered,
+            "tool_count": len(agent_registry.list_tools()),
+        },
+    )
+    return AgentService(
+        context_builder=context_builder,
+        policy=RuleBasedDecisionPolicy(),
+        runner=AgentRunner(
+            tool_executor=ToolExecutor(
+                agent_registry, allowed_permissions=_AGENT_ALLOWED_PERMISSIONS
+            )
+        ),
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     provider: LLMProvider | None = None,
@@ -83,6 +147,7 @@ def create_app(
     experience_store: ExperienceStore | None = None,
     memory_store: MemoryStore | None = None,
     user_trait_store: UserTraitStore | None = None,
+    agent_service: AgentService | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
@@ -164,6 +229,13 @@ def create_app(
         experience_store=initial_experience_store,
     )
 
+    # Agent karar katmanı. Sohbet akışının PARÇASI DEĞİLDİR: ChatOrchestrator
+    # bu servisi hiç tanımaz, dolayısıyla agent katmanındaki bir sorun normal
+    # sohbet cevabını hiçbir koşulda etkileyemez. Çağıran açıkça bir agent
+    # verdiyse o kullanılır; aksi halde lifespan startup'ta kurulur.
+    initial_agent_service = agent_service
+    auto_wire_agent_on_startup = initial_agent_service is None and using_default_provider
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
@@ -232,6 +304,17 @@ def create_app(
             app_instance.state.learning_service = startup_learning
             app_instance.state.user_model_service = startup_user_model
 
+        if auto_wire_agent_on_startup:
+            # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
+            # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
+            # Kurulmamış olan kaynak None geçilir; agent bunu sorunsuz karşılar.
+            app_instance.state.agent_service = _build_agent_stack(
+                conversation_store=active_conversation_store,
+                memory_retrieval=app_instance.state.memory_retrieval,
+                experience_store=app_instance.state.experience_store,
+                user_model=app_instance.state.user_model_service,
+            )
+
         logger.info(
             "application_started",
             extra={
@@ -266,9 +349,13 @@ def create_app(
     app.state.user_trait_store = initial_user_trait_store
     app.state.learning_service = initial_learning_service
     app.state.user_model_service = initial_user_model_service
+    # Agent: auto_wire_agent_on_startup ise lifespan başlayana kadar None kalır.
+    # API uçları None durumunda 503 döner.
+    app.state.agent_service = initial_agent_service
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
     app.include_router(user_model_router, prefix="/api")
+    app.include_router(agent_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:
