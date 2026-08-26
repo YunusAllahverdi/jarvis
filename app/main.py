@@ -19,6 +19,7 @@ from app.memory.sqlite_store import SQLiteMemoryStore
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
+from app.services.memory_temporal import MemoryTemporalService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.tools.base import PermissionLevel
@@ -106,13 +107,24 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         if auto_wire_memory_on_startup:
+            # Tek bir SQLiteMemoryStore örneği kurulur ve zamansal (temporal)
+            # ile getirme (retrieval) servisleri arasında paylaşılır — iki
+            # ayrı SQLite bağlantı mimarisi oluşmaz. ChatOrchestrator, temporal
+            # servisi hiç bilmez: temporal servis yalnızca MemoryWriteService'in
+            # İÇİNDE, yazma yolunu dolaylı olarak zenginleştiren bir bileşendir.
             memory_store = SQLiteMemoryStore(active_settings.memory_db_path)
             memory_extractor = MemoryExtractor(provider=active_provider)
-            startup_memory_service = MemoryWriteService(extractor=memory_extractor, store=memory_store)
+            memory_temporal = MemoryTemporalService(store=memory_store)
+            startup_memory_service = MemoryWriteService(
+                extractor=memory_extractor,
+                store=memory_store,
+                temporal_service=memory_temporal,
+            )
             startup_memory_retrieval = MemoryRetrievalService(store=memory_store)
             chat_orchestrator.set_memory_service(startup_memory_service)
             chat_orchestrator.set_memory_retrieval(startup_memory_retrieval)
             app_instance.state.memory_store = memory_store
+            app_instance.state.memory_temporal = memory_temporal
             app_instance.state.memory_service = startup_memory_service
             app_instance.state.memory_retrieval = startup_memory_retrieval
 
@@ -138,10 +150,11 @@ def create_app(
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
     app.state.tool_registry = active_tool_registry
-    # auto_wire_memory_on_startup ise bu üçü lifespan başlayana kadar None kalır.
+    # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
     app.state.memory_retrieval = initial_memory_retrieval
     app.state.memory_store = None
+    app.state.memory_temporal = None
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
 

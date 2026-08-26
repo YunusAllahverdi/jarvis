@@ -27,6 +27,18 @@ Kapsam (1B-3D — getirme yığını + paylaşılan store):
 12. Gerçek bir /api/chat akışı bir bellek yazabilir ve sonraki bir tur bu
     belleği getirip LLM bağlamına ekleyebilir (uçtan uca, gerçek SQLite ile).
 13. Bellek getirme hatası normal sohbeti bozmaz.
+
+Kapsam (1C-3 — zamansal bellek gerçek uygulamaya bağlanır):
+14. Üretim başlatması (lifespan) bir MemoryTemporalService kurar.
+15. MemoryWriteService, kurulan temporal servisi alır.
+16. Temporal servis ve retrieval servisi AYNI SQLiteMemoryStore örneğini
+    paylaşır (write servisiyle birlikte, üçü de aynı örnek).
+17. Gerçek bir /api/chat akışı: 1. tur bir bellek yazar, ÇAKIŞAN 2. tur
+    öncekini geçersizleştirir (fiziksel olarak korunur), yeni kayıt etkin
+    olur, 3. tur getirme ile yeni etkin gerçeği bulur.
+18. Tarihsel (geçersizleştirilmiş) kayıt, açıkça istendiğinde (get(id))
+    hâlâ erişilebilir kalır.
+19. MemoryTemporalService hatası normal sohbeti bozmaz.
 """
 
 from __future__ import annotations
@@ -44,10 +56,11 @@ from app.config.settings import Settings, get_settings
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.main import create_app
 from app.memory.extractor import MemoryExtractor
-from app.memory.record import MemoryRecord
+from app.memory.record import MemoryRecord, MemoryType
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
+from app.services.memory_temporal import MemoryTemporalService
 
 
 # ---------------------------------------------------------------------------
@@ -392,9 +405,39 @@ class TestWriteAndRetrievalShareTheSameStore:
         with TestClient(app):
             write_store = app.state.memory_service._store
             retrieval_store = app.state.memory_retrieval._store
+            temporal_store = app.state.memory_temporal._store
             assert write_store is retrieval_store
+            assert write_store is temporal_store
             assert write_store is app.state.memory_store
             assert isinstance(write_store, SQLiteMemoryStore)
+
+    def test_production_startup_creates_memory_temporal_service(self, tmp_path: Path) -> None:
+        settings = _make_settings(tmp_path)
+        app = create_app(settings=settings)
+
+        assert app.state.memory_temporal is None  # lifespan başlayana kadar
+
+        with TestClient(app):
+            assert isinstance(app.state.memory_temporal, MemoryTemporalService)
+
+    def test_write_service_receives_the_temporal_service(self, tmp_path: Path) -> None:
+        settings = _make_settings(tmp_path)
+        app = create_app(settings=settings)
+
+        with TestClient(app):
+            assert app.state.memory_service._temporal_service is app.state.memory_temporal
+
+    def test_orchestrator_does_not_reference_temporal_service(self, tmp_path: Path) -> None:
+        """ChatOrchestrator yalnızca memory_service ve memory_retrieval alır;
+        temporal servisi hiç bilmemeli — bu, MemoryWriteService'in içinde
+        dolaylı olarak kullanılan bir uygulama detayıdır."""
+        import inspect
+
+        import app.services.orchestrator as orchestrator_module
+
+        source = inspect.getsource(orchestrator_module)
+        assert "MemoryTemporalService" not in source
+        assert "memory_temporal" not in source
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +526,137 @@ class TestEndToEndWriteThenRetrieve:
         # Getirme patladığından hiçbir bellek bloğu eklenmemiş olmalı.
         sent = chat_provider.calls[0]
         assert not any("<relevant_memory>" in m.content for m in sent)
+
+
+# ---------------------------------------------------------------------------
+# 14-19. Zamansal bellek (MemoryTemporalService) gerçek uygulamaya bağlanır
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndTemporalConflictResolution:
+    def test_conflicting_fact_across_three_chat_turns_is_resolved_correctly(
+        self, tmp_path: Path
+    ) -> None:
+        """1. tur bir gerçeği yazar, ÇAKIŞAN 2. tur öncekini geçersizleştirir
+        (fiziksel olarak korunur) ve yeni kaydı etkin yapar, 3. tur getirme
+        ile yalnızca yeni etkin gerçeği bulur — tamamı gerçek SQLiteMemoryStore
+        ve gerçek MemoryTemporalService ile, tek paylaşılan store örneği
+        üzerinden."""
+        db_path = tmp_path / "shared_memory.db"
+        real_store = SQLiteMemoryStore(str(db_path))
+        temporal_service = MemoryTemporalService(store=real_store)
+        settings = _make_settings(tmp_path, memory_db_path=str(db_path))
+
+        # --- Tur 1: Istanbul yazılır ---
+        turn1_response = _json_response([
+            {
+                "memory_type": "fact",
+                "content": "User lives in Istanbul.",
+                "temporality": "present",
+                "status": "active",
+                "topic_key": "user_residence",
+            }
+        ])
+        turn1_write_service = MemoryWriteService(
+            extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(turn1_response)),
+            store=real_store,
+            temporal_service=temporal_service,
+        )
+        app1 = create_app(
+            settings=settings,
+            provider=_FakeChatProvider("Not aldım."),
+            memory_service=turn1_write_service,
+        )
+        with TestClient(app1) as client:
+            r1 = client.post("/api/chat", json={"message": "I live in Istanbul."})
+        assert r1.status_code == 200
+        assert real_store.count() == 1
+        istanbul_record = real_store.list_active(memory_type=MemoryType.FACT)[0]
+        assert istanbul_record.invalid_at is None
+
+        # --- Tur 2: Ankara ile ÇAKIŞAN gerçek yazılır ---
+        turn2_response = _json_response([
+            {
+                "memory_type": "fact",
+                "content": "User lives in Ankara.",
+                "temporality": "present",
+                "status": "active",
+                "topic_key": "user_residence",
+            }
+        ])
+        turn2_write_service = MemoryWriteService(
+            extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(turn2_response)),
+            store=real_store,
+            temporal_service=temporal_service,
+        )
+        app2 = create_app(
+            settings=settings,
+            provider=_FakeChatProvider("Güncellendi."),
+            memory_service=turn2_write_service,
+        )
+        with TestClient(app2) as client:
+            r2 = client.post("/api/chat", json={"message": "I moved to Ankara."})
+        assert r2.status_code == 200
+
+        # Eski kayıt fiziksel olarak korunuyor (silinmedi) ama artık geçersiz.
+        historical = real_store.get(istanbul_record.id)
+        assert historical is not None
+        assert historical.content == "User lives in Istanbul."
+        assert historical.invalid_at is not None
+
+        # Yeni kayıt etkin kayıttır.
+        active = real_store.list_active(memory_type=MemoryType.FACT)
+        assert len(active) == 1
+        assert active[0].content == "User lives in Ankara."
+
+        # Fiziksel kayıt sayısı: iki tur = iki kayıt, hiçbiri silinmedi.
+        assert real_store.count(include_deleted=True) == 2
+
+        # --- Tur 3: Getirme, yalnızca güncel (Ankara) gerçeği bulmalı ---
+        turn3_chat_provider = _FakeChatProvider("Ankara'da yaşıyorsun.")
+        app3 = create_app(
+            settings=settings,
+            provider=turn3_chat_provider,
+            memory_retrieval=MemoryRetrievalService(store=SQLiteMemoryStore(str(db_path))),
+        )
+        with TestClient(app3) as client:
+            r3 = client.post("/api/chat", json={"message": "Where do I live?"})
+        assert r3.status_code == 200
+
+        sent = turn3_chat_provider.calls[0]
+        system_messages = [m for m in sent if m.role == "system"]
+        assert len(system_messages) == 2
+        memory_block = system_messages[1].content
+        assert "Ankara" in memory_block
+        assert "Istanbul" not in memory_block  # tarihsel/geçersiz kayıt sızmamalı
+
+    def test_temporal_service_failure_does_not_break_chat_response(
+        self, tmp_path: Path
+    ) -> None:
+        class _RaisingTemporalService:
+            def write(self, record: MemoryRecord):  # noqa: ANN201
+                raise RuntimeError("temporal boom")
+
+        response = _json_response([
+            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
+        ])
+        chat_provider = _FakeChatProvider("Jarvis: hâlâ çalışıyor.")
+        settings = _make_settings(tmp_path)
+        app = create_app(
+            settings=settings,
+            provider=chat_provider,
+            memory_service=MemoryWriteService(
+                extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(response)),
+                store=SQLiteMemoryStore(str(tmp_path / "memory.db")),
+                temporal_service=_RaisingTemporalService(),
+            ),
+        )
+
+        with TestClient(app) as client:
+            chat_response = client.post("/api/chat", json={"message": "I live in Istanbul."})
+
+        assert chat_response.status_code == 200
+        assert chat_response.json()["response"] == "Jarvis: hâlâ çalışıyor."
 
 
 # ---------------------------------------------------------------------------
