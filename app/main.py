@@ -14,7 +14,9 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.memory.experience_store import ExperienceStore
 from app.memory.extractor import MemoryExtractor
+from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
@@ -45,6 +47,7 @@ def create_app(
     tool_registry: ToolRegistry | None = None,
     memory_service: MemoryWriteService | None = None,
     memory_retrieval: MemoryRetrievalService | None = None,
+    experience_store: ExperienceStore | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
@@ -93,6 +96,21 @@ def create_app(
         and using_default_provider
     )
 
+    # Experience kalıcılaştırması, Memory'den BAĞIMSIZ bir sınırdır: Memory
+    # "Jarvis ne biliyor?" sorusunu, Experience ise "ne oldu?" sorusunu
+    # yanıtlar. Bu yüzden otomatik kurulum bayrağı bilinçli olarak
+    # memory_service/memory_retrieval'e BAĞLANMAZ — çağıran yalnızca bellek
+    # yığınını elle verdi diye Experience kalıcılaştırması sessizce kapanmaz.
+    #
+    # `using_default_provider` koşulu ise şarttır: sahte bir sağlayıcı enjekte
+    # eden testlerde uygulamanın başlatılması, yalnızca başlatıldığı için
+    # kullanıcının SQLite dosyasını oluşturmamalıdır (bellek yığını için de
+    # geçerli olan aynı ilke).
+    initial_experience_store = experience_store
+    auto_wire_experience_on_startup = (
+        initial_experience_store is None and using_default_provider
+    )
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
@@ -101,6 +119,7 @@ def create_app(
         tool_executor=ToolExecutor(active_tool_registry, allowed_permissions={PermissionLevel.READ}),
         memory_service=initial_memory_service,
         memory_retrieval=initial_memory_retrieval,
+        experience_store=initial_experience_store,
         context_message_limit=active_settings.conversation_context_limit,
     )
 
@@ -127,6 +146,19 @@ def create_app(
             app_instance.state.memory_temporal = memory_temporal
             app_instance.state.memory_service = startup_memory_service
             app_instance.state.memory_retrieval = startup_memory_retrieval
+
+        if auto_wire_experience_on_startup:
+            # Bellek yığınından TAMAMEN ayrı bir blok: Experience deposu kendi
+            # tablosunu (`experiences`) kendi başına yönetir, MemoryStore'u hiç
+            # bilmez. Yine de AYNI fiziksel SQLite dosyası kullanılır — ikinci
+            # bir veritabanı dosyası oluşturulmaz.
+            #
+            # SQLiteMemoryStore ile aynı gerekçeyle burada, yani uygulama
+            # fiilen başlatıldığında kurulur; create_app() veya `app.main`
+            # importu tek başına kullanıcının veritabanına asla dokunmaz.
+            startup_experience_store = SQLiteExperienceStore(active_settings.memory_db_path)
+            chat_orchestrator.set_experience_store(startup_experience_store)
+            app_instance.state.experience_store = startup_experience_store
 
         logger.info(
             "application_started",
@@ -155,6 +187,8 @@ def create_app(
     app.state.memory_retrieval = initial_memory_retrieval
     app.state.memory_store = None
     app.state.memory_temporal = None
+    # Aynı şekilde: auto_wire_experience_on_startup ise lifespan başlayana kadar None kalır.
+    app.state.experience_store = initial_experience_store
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
 

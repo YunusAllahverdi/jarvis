@@ -342,6 +342,14 @@ class TestFailedTurnDoesNotCaptureExperience:
 
 class TestConstructorSignatureUnchanged:
     def test_constructor_parameters_are_unchanged(self) -> None:
+        """Kurucu, Phase 2D-Integration'da eklenen `experience_store` DIŞINDA
+        değişmemiş olmalı.
+
+        `experience_store`, mevcut `memory_service`/`memory_retrieval` deseniyle
+        aynı biçimde eklenmiş, varsayılanı None olan bilinçli bir opsiyonel
+        bağımlılıktır — verilmediğinde bu dosyadaki tüm yakalama davranışı
+        (hiçbir kalıcılaştırma olmadan) aynen korunur.
+        """
         sig = inspect.signature(ChatOrchestrator.__init__)
         param_names = set(sig.parameters.keys()) - {"self"}
         assert param_names == {
@@ -352,10 +360,12 @@ class TestConstructorSignatureUnchanged:
             "tool_executor",
             "memory_service",
             "memory_retrieval",
+            "experience_store",
             "max_tool_rounds",
             "context_message_limit",
             "memory_context_limit",
         }
+        assert sig.parameters["experience_store"].default is None
 
 
 # ---------------------------------------------------------------------------
