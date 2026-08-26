@@ -2,11 +2,14 @@
 
 import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider, LLMResponseError
 from app.core.chat import ChatMessage, ToolCall
+from app.memory.experience import Experience
+from app.memory.experience_builder import build_experience_from_turn
 from app.memory.record import MemoryRecord
 from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
@@ -126,6 +129,7 @@ class ChatOrchestrator:
         self._max_tool_rounds = max_tool_rounds
         self._context_message_limit = context_message_limit
         self._memory_context_limit = memory_context_limit
+        self._last_experience: Experience | None = None
 
     def set_memory_service(self, memory_service: MemoryWriteService | None) -> None:
         """Bellek servisini kurucudan sonra bağlar (geç bağlama).
@@ -161,6 +165,7 @@ class ChatOrchestrator:
     async def respond(self, message: str, session_id: str | None = None) -> ChatResult:
         """Kullanıcı mesajına sağlayıcı cevabı üretir ve konuşmayı günceller."""
 
+        turn_started_at = datetime.now(UTC)
         conversation = self._conversation_store.get_or_create(session_id)
         user_message = ChatMessage(role="user", content=message)
 
@@ -188,6 +193,13 @@ class ChatOrchestrator:
                 self._conversation_store.append_messages(conversation.session_id, new_history)
                 if self._memory_service is not None:
                     await self._process_memory_safely(message, conversation.session_id)
+                self._capture_experience_safely(
+                    session_id=conversation.session_id,
+                    user_message=message,
+                    assistant_response=final_response,
+                    turn_messages=new_history,
+                    occurred_at=turn_started_at,
+                )
                 return ChatResult(response=final_response, session_id=conversation.session_id)
 
             tool_call_message = ChatMessage(
@@ -241,6 +253,36 @@ class ChatOrchestrator:
                 "memory_service_failed",
                 extra={"session_id": session_id},
             )
+
+    def _capture_experience_safely(
+        self,
+        *,
+        session_id: str,
+        user_message: str,
+        assistant_response: str,
+        turn_messages: list[ChatMessage],
+        occurred_at: datetime,
+    ) -> None:
+        """Tamamlanmış bir turdan bellek-içi bir Experience yakalar (Phase 2C).
+
+        build_experience_from_turn() saf/durumsuzdur — hiçbir LLM çağırmaz,
+        hiçbir depoya erişmez, hiçbir I/O yapmaz. Buradaki try/except yalnızca
+        savunma katmanıdır: beklenmedik bir hata olsa bile normal sohbet
+        cevabı (ChatResult) asla etkilenmemelidir. Hata durumunda önceki
+        `_last_experience` değeri korunur — None'a düşürülmez.
+        """
+        try:
+            experience = build_experience_from_turn(
+                session_id=session_id,
+                user_message=user_message,
+                assistant_response=assistant_response,
+                turn_messages=turn_messages,
+                occurred_at=occurred_at,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("experience_capture_failed", extra={"session_id": session_id})
+            return
+        self._last_experience = experience
 
     async def _execute_tool_calls(self, calls: list[ToolCall]) -> list[ChatMessage]:
         """Her tool call'u sadece registry üzerinden çalıştırır."""
