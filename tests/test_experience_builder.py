@@ -358,10 +358,26 @@ class TestImportIsolation:
         assert _Experience is not None
         assert ChatOrchestrator is not None
 
-    def test_orchestrator_module_does_not_reference_the_builder(self) -> None:
-        """Bu faz ChatOrchestrator'a bağlanmıyor — kaynak kodda hiç geçmemeli."""
-        import app.services.orchestrator as orchestrator_module
+    def test_builder_module_does_not_import_from_the_orchestrator(self) -> None:
+        """Bağımlılık yönü tek yönlüdür: ChatOrchestrator artık builder'ı
+        kullanır (Phase 2C), ama builder hiçbir zaman orchestrator'a (veya
+        başka bir çağırana) geri bağımlı olmamalı. Bu, builder'ın bağımsız
+        ve saf kalmaya devam ettiğinin yapısal kanıtıdır — 'orchestrator
+        builder'ı hiç bilmiyor' testi (Phase 2B'de geçerliydi) Phase 2C'de
+        kasıtlı olarak geçersiz kılındığından, burada onun yerine geçen,
+        hâlâ doğru olan garanti budur.
 
-        source = inspect.getsource(orchestrator_module)
-        assert "build_experience_from_turn" not in source
-        assert "experience_builder" not in source
+        Not: import satırları taranır (tam kaynak metni değil) — aksi halde
+        modülün kendi docstring'indeki açıklayıcı "ChatOrchestrator" sözcüğü
+        (bağımlılık değil, düz metin) yanlışlıkla testi patlatırdı.
+        """
+        import app.memory.experience_builder as builder_module
+
+        import_lines = [
+            line.strip()
+            for line in inspect.getsource(builder_module).splitlines()
+            if line.strip().startswith(("import ", "from "))
+        ]
+        joined_imports = "\n".join(import_lines)
+
+        assert "orchestrator" not in joined_imports.lower()
