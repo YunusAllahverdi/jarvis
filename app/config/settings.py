@@ -50,6 +50,72 @@ class Settings(BaseSettings):
     # Boş bırakılırsa platforma özgü kullanıcı veri dizini kullanılır.
     memory_db_path: str = Field(default_factory=_default_memory_db_path)
 
+    # Agent karar katmanının hangi politikayı kullanacağı.
+    # "rule_based": deterministik, LLM çağırmaz (varsayılan).
+    # "llm"       : kararı LLM'e verdirir, çıktıyı deterministik doğrular.
+    # Varsayılanın deterministik olması bilinçlidir: LLM politikası tur başına
+    # ek bir sağlayıcı çağrısı demektir ve açıkça seçilmelidir.
+    agent_decision_policy: Literal["rule_based", "llm"] = "rule_based"
+
+    # Karar katmanının sohbet akışına bağlanıp bağlanmayacağı.
+    # Kapatıldığında agent yalnızca kendi API'si üzerinden kullanılabilir;
+    # sohbet akışı bu bileşeni hiç çağırmaz.
+    agent_chat_integration: bool = True
+
+    # ------------------------------------------------------------------
+    # LLM Council
+    # ------------------------------------------------------------------
+    # VARSAYILAN KAPALI. Council tur başına N+N+1 LLM çağrısı demektir ve
+    # hiçbir mevcut kurulumda `council_models` dolu değildir. Kapalıyken
+    # sistemin davranışı bit düzeyinde eskisi gibidir.
+    council_enabled: bool = False
+
+    # Üye model adları. Ortam değişkeninden JSON olarak verilir:
+    #   JARVIS_COUNCIL_MODELS='["llama3.1","qwen2.5","mistral"]'
+    # Her ad için ayrı bir sağlayıcı örneği kurulur; Council model adını
+    # hiç görmez (yalnızca opaque üye kimlikleri).
+    council_models: list[str] = Field(default_factory=list)
+
+    # Sentezi üretecek model. Boş bırakılırsa ilk üye kullanılır.
+    # Üyelerden biriyle aynıysa aynı sağlayıcı örneği yeniden kullanılır.
+    council_chairman_model: str | None = None
+
+    council_max_members: int = Field(default=4, ge=1, le=8)
+    council_min_candidates: int = Field(default=2, ge=1, le=8)
+    council_review_enabled: bool = True
+
+    council_member_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    council_total_timeout_seconds: float = Field(default=180.0, gt=0, le=1800)
+    council_max_concurrency: int = Field(default=3, ge=1, le=8)
+
+    # Prompt'a gömülürken uygulanan deterministik kısaltma sınırları.
+    # Yalnızca MODEL ÜRETİMİ metinlere uygulanır; kullanıcının isteği asla
+    # kısaltılmaz.
+    council_max_candidate_chars: int = Field(default=4000, ge=200, le=50_000)
+    council_max_review_chars: int = Field(default=2000, ge=200, le=50_000)
+
+    @field_validator("council_models")
+    @classmethod
+    def normalize_council_models(cls, value: list[str]) -> list[str]:
+        """Model adlarını temizler ve tekrarları kaldırır (sırayı korur).
+
+        Aynı modeli iki kez eklemek iki bağımsız görüş üretmez; sessizce
+        tekilleştirmek, yanlış bir çeşitlilik izleniminden daha dürüsttür.
+        """
+        seen: list[str] = []
+        for raw in value:
+            name = raw.strip()
+            if name and name not in seen:
+                seen.append(name)
+        return seen
+
+    @field_validator("council_chairman_model")
+    @classmethod
+    def normalize_chairman_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

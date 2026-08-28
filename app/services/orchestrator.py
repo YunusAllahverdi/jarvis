@@ -7,10 +7,13 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider, LLMResponseError
+from app.agent.prompts import build_council_context, build_tool_result_context
 from app.core.chat import ChatMessage, ToolCall
 from app.memory.experience import Experience
 from app.memory.experience_builder import build_experience_from_turn
+from app.memory.experience_store import ExperienceStore
 from app.memory.record import MemoryRecord
+from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
@@ -91,6 +94,8 @@ class ChatOrchestrator:
         tool_executor: ToolExecutor,
         memory_service: MemoryWriteService | None = None,
         memory_retrieval: MemoryRetrievalService | None = None,
+        experience_store: ExperienceStore | None = None,
+        agent_service: AgentService | None = None,
         max_tool_rounds: int = 4,
         context_message_limit: int = 0,
         memory_context_limit: int = 5,
@@ -112,6 +117,19 @@ class ChatOrchestrator:
                 eklenmez (mevcut davranış korunur). MemoryStore'un somut
                 implementasyonu bu katmana hiç sızmaz — yalnızca
                 MemoryRetrievalService'e bağımlı olunur.
+            experience_store: Başarılı bir turdan yakalanan Experience'ı kalıcı
+                hale getiren opsiyonel depo. None ise hiçbir Experience
+                kalıcılaştırılmaz (mevcut davranış korunur) — yakalama ve
+                `_last_experience` yine de çalışır. Yalnızca ExperienceStore
+                Protocol'üne bağımlı olunur; deponun somut implementasyonu bu
+                katmana hiç sızmaz.
+            agent_service: Kullanıcı mesajı için hangi tool'ların gerektiğine
+                karar verip çalıştıran opsiyonel karar katmanı. None ise
+                sohbet akışı BİT DÜZEYİNDE eskisi gibi çalışır (mevcut
+                davranış korunur). Verildiğinde, başarılı tool sonuçları
+                LLM'e açıkça sınırlanmış bir VERİ bloğu olarak eklenir;
+                nihai cevabı yine normal cevap üretimi yazar. Agent'ın
+                kararı, çalıştırması veya hatası bu akışı ASLA bozamaz.
             max_tool_rounds: LLM'e izin verilen maksimum tool-call turu.
             context_message_limit: LLM bağlamına gönderilecek maksimum geçmiş
                 mesaj sayısı (system mesajı hariç). 0 veya negatif = sınırsız.
@@ -126,6 +144,8 @@ class ChatOrchestrator:
         self._tool_executor = tool_executor
         self._memory_service = memory_service
         self._memory_retrieval = memory_retrieval
+        self._experience_store = experience_store
+        self._agent_service = agent_service
         self._max_tool_rounds = max_tool_rounds
         self._context_message_limit = context_message_limit
         self._memory_context_limit = memory_context_limit
@@ -152,6 +172,26 @@ class ChatOrchestrator:
         """
         self._memory_retrieval = memory_retrieval
 
+    def set_experience_store(self, experience_store: ExperienceStore | None) -> None:
+        """Experience deposunu kurucudan sonra bağlar (geç bağlama).
+
+        set_memory_service() / set_memory_retrieval() ile aynı gerekçe:
+        create_app()'in üretim yolunda SQLite dosyasına dokunan gerçek depo,
+        modül import anında değil, uygulama fiilen başlatıldığında (lifespan
+        startup) kurulur. Bu metod, o an henüz mevcut olmayan deponun
+        orchestrator'a sonradan bağlanmasını sağlar.
+        """
+        self._experience_store = experience_store
+
+    def set_agent_service(self, agent_service: AgentService | None) -> None:
+        """Karar katmanını kurucudan sonra bağlar (geç bağlama).
+
+        Diğer `set_*` metodlarıyla aynı gerekçe: agent'ın bağlam kaynakları
+        (bellek, deneyim, kullanıcı modeli) yalnızca uygulama fiilen
+        başlatıldığında kurulur.
+        """
+        self._agent_service = agent_service
+
     def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Geçmiş mesajları context window limitine göre kırpar.
 
@@ -176,6 +216,10 @@ class ChatOrchestrator:
         memory_context_message = self._build_memory_context_message(message)
         if memory_context_message is not None:
             provider_messages.append(memory_context_message)
+        for agent_context_message in await self._build_agent_context_messages(
+            message, conversation.session_id
+        ):
+            provider_messages.append(agent_context_message)
         provider_messages.extend(trimmed_history)
         provider_messages.append(user_message)
         new_history: list[ChatMessage] = [user_message]
@@ -193,13 +237,15 @@ class ChatOrchestrator:
                 self._conversation_store.append_messages(conversation.session_id, new_history)
                 if self._memory_service is not None:
                     await self._process_memory_safely(message, conversation.session_id)
-                self._capture_experience_safely(
+                experience = self._capture_experience_safely(
                     session_id=conversation.session_id,
                     user_message=message,
                     assistant_response=final_response,
                     turn_messages=new_history,
                     occurred_at=turn_started_at,
                 )
+                if experience is not None:
+                    self._persist_experience_safely(experience)
                 return ChatResult(response=final_response, session_id=conversation.session_id)
 
             tool_call_message = ChatMessage(
@@ -238,6 +284,59 @@ class ChatOrchestrator:
             return None
         return ChatMessage(role="system", content=formatted)
 
+    async def _build_agent_context_messages(
+        self, message: str, session_id: str
+    ) -> list[ChatMessage]:
+        """Karar katmanını çalıştırıp sonuçlarını bağlam mesajlarına çevirir.
+
+        İki tür blok üretilebilir; ikisi de aynı VERİ kanalını kullanır:
+        - başarılı tool sonuçları,
+        - Council çalıştıysa çok modelli sentez.
+
+        Bu metod sohbet akışının davranışını yalnızca EKLEYEREK değiştirir:
+        - agent bağlı değilse boş liste döner ve akış eskisiyle aynı kalır,
+        - agent hiçbir eylem planlamazsa (normal sohbet) blok eklenmez,
+        - agent onay bekliyorsa veya tüm eylemler başarısızsa blok eklenmez,
+        - Council çalışmadıysa veya başarısızsa Council bloğu eklenmez.
+
+        Nihai cevabı HER ZAMAN normal cevap üretimi yazar; ne ham JSON ne de
+        Chairman metni kullanıcıya doğrudan döner. Blok içerikleri açıkça
+        "veri, talimat değil" olarak işaretlenir ve açı parantezleri
+        nötrleştirilir (mevcut bellek bloğuyla aynı enjeksiyon savunması).
+
+        Hata durumunda boş liste döner — bir agent veya Council hatası
+        sohbeti ASLA bozmaz.
+        """
+        if self._agent_service is None:
+            return []
+        try:
+            result = await self._agent_service.run(message, session_id=session_id)
+            blocks = [
+                block
+                for block in (build_tool_result_context(result), build_council_context(result))
+                if block is not None
+            ]
+        except Exception:  # noqa: BLE001
+            logger.exception("agent_context_failed", extra={"session_id": session_id})
+            return []
+
+        if not blocks:
+            return []
+        logger.info(
+            "agent_context_injected",
+            extra={
+                "session_id": session_id,
+                "intent": result.decision.intent.value,
+                "status": result.status.value,
+                "tool_count": len(result.successful_outcomes),
+                "council_status": (
+                    result.council.status.value if result.council is not None else None
+                ),
+                "block_count": len(blocks),
+            },
+        )
+        return [ChatMessage(role="system", content=block) for block in blocks]
+
     async def _process_memory_safely(self, message: str, session_id: str) -> None:
         """Bellek çıkarımını/yazımını sohbet cevabından tamamen izole çalıştırır.
 
@@ -262,7 +361,7 @@ class ChatOrchestrator:
         assistant_response: str,
         turn_messages: list[ChatMessage],
         occurred_at: datetime,
-    ) -> None:
+    ) -> Experience | None:
         """Tamamlanmış bir turdan bellek-içi bir Experience yakalar (Phase 2C).
 
         build_experience_from_turn() saf/durumsuzdur — hiçbir LLM çağırmaz,
@@ -270,6 +369,13 @@ class ChatOrchestrator:
         savunma katmanıdır: beklenmedik bir hata olsa bile normal sohbet
         cevabı (ChatResult) asla etkilenmemelidir. Hata durumunda önceki
         `_last_experience` değeri korunur — None'a düşürülmez.
+
+        Returns:
+            Bu turda yakalanan yeni Experience; yakalama başarısız olduysa None.
+            Çağıranın kalıcılaştırma adımı bu dönüş değerini kullanmalıdır —
+            `self._last_experience`'ı DEĞİL: yakalama başarısız olduğunda o alan
+            bir ÖNCEKİ turun Experience'ını tutmaya devam eder ve onun yeniden
+            yazılması yinelenen bir id ile INSERT denemesi anlamına gelirdi.
         """
         try:
             experience = build_experience_from_turn(
@@ -281,8 +387,36 @@ class ChatOrchestrator:
             )
         except Exception:  # noqa: BLE001
             logger.exception("experience_capture_failed", extra={"session_id": session_id})
-            return
+            return None
         self._last_experience = experience
+        return experience
+
+    def _persist_experience_safely(self, experience: Experience) -> None:
+        """Yakalanan Experience'ı sohbet cevabından tamamen izole biçimde saklar.
+
+        Yakalamanın (Phase 2C) ürettiği NESNENİN TA KENDİSİ saklanır — ikinci
+        bir Experience veya ikinci bir id üretilmez. Kalıcılaştırma her zaman
+        `_last_experience` güncellendikten SONRA çalışır; bu sayede buradaki
+        bir hata geçerli bellek-içi Experience'ı geçersizleştiremez.
+
+        Depo yoksa hiçbir şey yapılmaz (mevcut davranış korunur). Depo hata
+        fırlatırsa — depo erişilemez, şema kısıtı ihlal edilmiş (ör. yinelenen
+        id) veya başka beklenmedik bir sebep — hata loglanır ve YUTULUR:
+        başarılı bir sohbet cevabı Experience kalıcılaştırması yüzünden ASLA
+        bozulmamalıdır.
+        """
+        if self._experience_store is None:
+            return
+        try:
+            self._experience_store.add(experience)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "experience_persist_failed",
+                extra={
+                    "experience_id": experience.id,
+                    "session_id": experience.session_id,
+                },
+            )
 
     async def _execute_tool_calls(self, calls: list[ToolCall]) -> list[ChatMessage]:
         """Her tool call'u sadece registry üzerinden çalıştırır."""
