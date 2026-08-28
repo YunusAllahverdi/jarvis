@@ -8,3 +8,15 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Araç / oturum metadata
+.freebuff/
+.claude/worktrees/
+
+# Yerel veritabanı dosyaları
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
