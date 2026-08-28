@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from app.adapters.llm.base import LLMProvider, LLMResponseError
-from app.agent.prompts import build_tool_result_context
+from app.agent.prompts import build_council_context, build_tool_result_context
 from app.core.chat import ChatMessage, ToolCall
 from app.memory.experience import Experience
 from app.memory.experience_builder import build_experience_from_turn
@@ -216,10 +216,9 @@ class ChatOrchestrator:
         memory_context_message = self._build_memory_context_message(message)
         if memory_context_message is not None:
             provider_messages.append(memory_context_message)
-        agent_context_message = await self._build_agent_context_message(
+        for agent_context_message in await self._build_agent_context_messages(
             message, conversation.session_id
-        )
-        if agent_context_message is not None:
+        ):
             provider_messages.append(agent_context_message)
         provider_messages.extend(trimmed_history)
         provider_messages.append(user_message)
@@ -285,35 +284,44 @@ class ChatOrchestrator:
             return None
         return ChatMessage(role="system", content=formatted)
 
-    async def _build_agent_context_message(
+    async def _build_agent_context_messages(
         self, message: str, session_id: str
-    ) -> ChatMessage | None:
-        """Karar katmanını çalıştırıp başarılı tool sonuçlarını bağlam mesajına çevirir.
+    ) -> list[ChatMessage]:
+        """Karar katmanını çalıştırıp sonuçlarını bağlam mesajlarına çevirir.
+
+        İki tür blok üretilebilir; ikisi de aynı VERİ kanalını kullanır:
+        - başarılı tool sonuçları,
+        - Council çalıştıysa çok modelli sentez.
 
         Bu metod sohbet akışının davranışını yalnızca EKLEYEREK değiştirir:
-        - agent bağlı değilse None döner ve akış eskisiyle aynı kalır,
-        - agent hiçbir eylem planlamazsa (normal sohbet) None döner,
-        - agent onay bekliyorsa veya tüm eylemler başarısızsa None döner,
-        - yalnızca gerçekten başarılı bir tool sonucu varsa bir VERİ bloğu eklenir.
+        - agent bağlı değilse boş liste döner ve akış eskisiyle aynı kalır,
+        - agent hiçbir eylem planlamazsa (normal sohbet) blok eklenmez,
+        - agent onay bekliyorsa veya tüm eylemler başarısızsa blok eklenmez,
+        - Council çalışmadıysa veya başarısızsa Council bloğu eklenmez.
 
-        Nihai cevabı yine normal cevap üretimi yazar; kullanıcı ham JSON
-        görmez. Blok içeriği açıkça "veri, talimat değil" olarak işaretlenir
-        ve açı parantezleri nötrleştirilir (mevcut bellek bloğuyla aynı
-        enjeksiyon savunması).
+        Nihai cevabı HER ZAMAN normal cevap üretimi yazar; ne ham JSON ne de
+        Chairman metni kullanıcıya doğrudan döner. Blok içerikleri açıkça
+        "veri, talimat değil" olarak işaretlenir ve açı parantezleri
+        nötrleştirilir (mevcut bellek bloğuyla aynı enjeksiyon savunması).
 
-        Hata durumunda None döner — bir agent hatası sohbeti ASLA bozmaz.
+        Hata durumunda boş liste döner — bir agent veya Council hatası
+        sohbeti ASLA bozmaz.
         """
         if self._agent_service is None:
-            return None
+            return []
         try:
             result = await self._agent_service.run(message, session_id=session_id)
-            formatted = build_tool_result_context(result)
+            blocks = [
+                block
+                for block in (build_tool_result_context(result), build_council_context(result))
+                if block is not None
+            ]
         except Exception:  # noqa: BLE001
             logger.exception("agent_context_failed", extra={"session_id": session_id})
-            return None
+            return []
 
-        if formatted is None:
-            return None
+        if not blocks:
+            return []
         logger.info(
             "agent_context_injected",
             extra={
@@ -321,9 +329,13 @@ class ChatOrchestrator:
                 "intent": result.decision.intent.value,
                 "status": result.status.value,
                 "tool_count": len(result.successful_outcomes),
+                "council_status": (
+                    result.council.status.value if result.council is not None else None
+                ),
+                "block_count": len(blocks),
             },
         )
-        return ChatMessage(role="system", content=formatted)
+        return [ChatMessage(role="system", content=block) for block in blocks]
 
     async def _process_memory_safely(self, message: str, session_id: str) -> None:
         """Bellek çıkarımını/yazımını sohbet cevabından tamamen izole çalıştırır.

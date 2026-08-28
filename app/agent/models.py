@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.chat import ToolCall
+from app.council.models import CouncilResult
 from app.tools.base import PermissionLevel
 
 _TOOL_NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
@@ -182,6 +183,15 @@ class AgentResult(BaseModel):
     decision: AgentDecision
     outcomes: list[ActionOutcome] = Field(default_factory=list)
     status: AgentStatus
+
+    council: CouncilResult | None = None
+    """Council çalıştıysa müzakerenin yapılandırılmış sonucu; aksi halde None.
+
+    Council çalışmadığında (kapalı, kapı açılmadı) bu alan None kalır ve
+    sistemin davranışı Council eklenmeden önceki hâliyle aynıdır.
+    Chairman'ın metni buradan KULLANICIYA DOĞRUDAN dönmez; çağıran onu
+    sınırlanmış veri olarak normal cevap üretimine aktarır.
+    """
 
     @property
     def ok(self) -> bool:

@@ -20,6 +20,8 @@ from app.api.routes.health import router as health_router
 from app.api.routes.user_model import router as user_model_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.council.gate import CouncilGate
+from app.council.models import CouncilMember
 from app.learning.sqlite_trait_store import SQLiteUserTraitStore
 from app.learning.trait_store import UserTraitStore
 from app.memory.experience_store import ExperienceStore
@@ -29,6 +31,7 @@ from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
+from app.services.council_service import CouncilService
 from app.services.learning_service import LearningService
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
@@ -108,6 +111,79 @@ def _build_decision_policy(
     )
 
 
+def _build_council_service(
+    settings: Settings,
+) -> tuple[CouncilService | None, list[LLMProvider]]:
+    """Yapılandırmadan Council'ı kurar ve kapatılması gereken sağlayıcıları döndürür.
+
+    Model başına BİR sağlayıcı örneği kurulur ve `member-N` biçiminde opaque
+    kimliklerle Council'a verilir — model adı Council çekirdeğine hiç ulaşmaz.
+
+    Chairman, üyelerden biriyle aynı modelse AYNI sağlayıcı örneği yeniden
+    kullanılır (gereksiz ikinci HTTP istemcisi açılmaz). Farklıysa yalnızca
+    onun için ek bir örnek kurulur.
+
+    Returns:
+        `(servis, kapatılacak_sağlayıcılar)`. Council kapalıysa veya yeterli
+        üye yapılandırılmamışsa `(None, [])` döner — bu bir hata değildir.
+    """
+    if not settings.council_enabled:
+        return None, []
+
+    names = settings.council_models[: settings.council_max_members]
+    if len(names) < settings.council_min_candidates:
+        logger.warning(
+            "council_not_built_insufficient_models",
+            extra={
+                "configured": len(settings.council_models),
+                "required": settings.council_min_candidates,
+            },
+        )
+        return None, []
+
+    def _provider_for(model_name: str) -> LLMProvider:
+        return OllamaProvider(
+            base_url=settings.ollama_base_url,
+            model=model_name,
+            timeout_seconds=settings.council_member_timeout_seconds,
+        )
+
+    providers_by_model: dict[str, LLMProvider] = {}
+    members: list[CouncilMember] = []
+    for index, model_name in enumerate(names, start=1):
+        provider = _provider_for(model_name)
+        providers_by_model[model_name] = provider
+        members.append(CouncilMember(member_id=f"member-{index}", provider=provider))
+
+    chairman_model = settings.council_chairman_model or names[0]
+    chairman_provider = providers_by_model.get(chairman_model)
+    if chairman_provider is None:
+        chairman_provider = _provider_for(chairman_model)
+        providers_by_model[chairman_model] = chairman_provider
+    chairman = CouncilMember(member_id="chairman", provider=chairman_provider)
+
+    logger.info(
+        "council_built",
+        extra={
+            "member_count": len(members),
+            "provider_count": len(providers_by_model),
+            "review_enabled": settings.council_review_enabled,
+        },
+    )
+    service = CouncilService(
+        members=members,
+        chairman=chairman,
+        min_candidates=settings.council_min_candidates,
+        review_enabled=settings.council_review_enabled,
+        member_timeout_seconds=settings.council_member_timeout_seconds,
+        total_timeout_seconds=settings.council_total_timeout_seconds,
+        max_concurrency=settings.council_max_concurrency,
+        max_candidate_chars=settings.council_max_candidate_chars,
+        max_review_chars=settings.council_max_review_chars,
+    )
+    return service, list(providers_by_model.values())
+
+
 def _build_agent_stack(
     *,
     conversation_store: ConversationStore,
@@ -115,6 +191,8 @@ def _build_agent_stack(
     experience_store: ExperienceStore | None,
     user_model: UserModelService | None,
     policy: DecisionPolicy | None = None,
+    council_service: CouncilService | None = None,
+    council_gate: CouncilGate | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -150,6 +228,8 @@ def _build_agent_stack(
     return AgentService(
         context_builder=context_builder,
         policy=policy or RuleBasedDecisionPolicy(),
+        council_service=council_service,
+        council_gate=council_gate,
         runner=AgentRunner(
             tool_executor=ToolExecutor(
                 agent_registry, allowed_permissions=_AGENT_ALLOWED_PERMISSIONS
@@ -169,6 +249,7 @@ def create_app(
     memory_store: MemoryStore | None = None,
     user_trait_store: UserTraitStore | None = None,
     agent_service: AgentService | None = None,
+    council_service: CouncilService | None = None,
 ) -> FastAPI:
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
@@ -257,6 +338,26 @@ def create_app(
     initial_agent_service = agent_service
     auto_wire_agent_on_startup = initial_agent_service is None and using_default_provider
 
+    # Council. Varsayılan kapalı olduğundan bu blok normalde hiç çalışmaz ve
+    # sistem davranışı Council eklenmeden önceki hâliyle aynı kalır.
+    # Sağlayıcı örnekleri burada kurulur ve lifespan sonunda kapatılır.
+    initial_council_service = council_service
+    council_providers: list[LLMProvider] = []
+    if initial_council_service is None:
+        initial_council_service, council_providers = _build_council_service(active_settings)
+    # Kapının `enabled`'ı, ayarın kendisi değil BİR SERVİSİN VAR OLMASIDIR:
+    # `council_enabled` zaten servisin kurulup kurulmayacağını belirler ve
+    # çağıran açıkça bir servis enjekte ettiyse Council'ı istiyor demektir.
+    council_gate = (
+        CouncilGate(
+            enabled=True,
+            member_count=initial_council_service.member_count,
+            min_candidates=active_settings.council_min_candidates,
+        )
+        if initial_council_service is not None
+        else None
+    )
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
@@ -344,6 +445,8 @@ def create_app(
                     provider=active_provider,
                     model_label=active_settings.ollama_model,
                 ),
+                council_service=initial_council_service,
+                council_gate=council_gate,
             )
             app_instance.state.agent_service = startup_agent
             # Sohbet entegrasyonu ayrı bir anahtardır: agent API'si açık
@@ -361,8 +464,16 @@ def create_app(
         )
         yield
         # OllamaProvider gibi kapatılabilir provider'ları düzgün kapat.
-        if hasattr(active_provider, "aclose"):
-            await active_provider.aclose()
+        # Council üyeleri için model başına ayrı birer HTTP istemcisi açılır;
+        # hiçbiri sızdırılmamalıdır. Bir kapatmanın başarısız olması diğerlerini
+        # engellememeli, bu yüzden her biri ayrı ayrı korunur.
+        for closable in (active_provider, *council_providers):
+            if not hasattr(closable, "aclose"):
+                continue
+            try:
+                await closable.aclose()
+            except Exception:  # noqa: BLE001
+                logger.exception("provider_close_failed")
         logger.info("application_stopped", extra={"event": "application_stopped"})
 
     app = FastAPI(
@@ -388,6 +499,9 @@ def create_app(
     # Agent: auto_wire_agent_on_startup ise lifespan başlayana kadar None kalır.
     # API uçları None durumunda 503 döner.
     app.state.agent_service = initial_agent_service
+    app.state.council_service = initial_council_service
+    app.state.council_gate = council_gate
+    app.state.council_providers = council_providers
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
     app.include_router(user_model_router, prefix="/api")
