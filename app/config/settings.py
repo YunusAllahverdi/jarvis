@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     # kullanıcı onayından geçer.
     workspace_writable: bool = False
 
+    # Terminal. KAPALI varsayılan: açılmadıkça DANGEROUS izinli her araç
+    # reddedilir, kayıtlı olsa bile çalışamaz. Açıldığında da her çağrı
+    # kullanıcı onayından geçer.
+    terminal_enabled: bool = False
+    # Çalıştırılmasına izin verilen program adları. Boş bırakılırsa
+    # inceleme/test araçlarından oluşan varsayılan küme kullanılır.
+    terminal_allowed_commands: list[str] = Field(default_factory=list)
+    # Tek bir komutun çalışabileceği en uzun süre.
+    terminal_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+
     # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
     # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
     # başlatmayı atlatmalıdır.

@@ -9,6 +9,7 @@ from app.tools.builtin.filesystem import (
     ReadFileTool,
     WriteFileTool,
 )
+from app.tools.builtin.terminal import RunCommandTool
 from app.tools.builtin.system_info import GetDateTool, GetTimeTool, SystemStatusTool
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "ListDirTool",
     "MemorySearchTool",
     "ReadFileTool",
+    "RunCommandTool",
     "SystemStatusTool",
     "UserProfileTool",
     "WriteFileTool",

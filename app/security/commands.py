@@ -19,12 +19,20 @@ from collections.abc import Iterable, Sequence
 MAX_COMMAND_LENGTH = 2000
 MAX_ARGUMENT_COUNT = 60
 
-SHELL_METACHARACTERS: tuple[str, ...] = (";", "&", "|", "`", ">", "<", "\n", "\r", "$(")
-"""Kabuk denetimi anlamına gelen diziler.
+SHELL_CONTROL_TOKENS: frozenset[str] = frozenset(
+    {";", "&", "&&", "|", "||", ">", ">>", "<", "<<"}
+)
+"""Bir kabukta komut zincirlemeye yarayan, tek başına duran jetonlar.
 
-Kabuk zaten kullanılmıyor, dolayısıyla bunlar çalışmazdı. Yine de
-reddedilirler: böyle bir komut ya yanlış anlaşılmış bir niyettir ya da
-kasıtlı bir denemedir; ikisi de sessizce yarım çalıştırılmamalıdır.
+Denetim ayrıştırmadan SONRA yapılır, ham metin üzerinde değil. Sebebi şu:
+`python -c "a; b"` meşru bir komuttur ve içindeki noktalı virgül tek bir
+argümanın parçasıdır. Ham metni tarasaydık bunu reddeder, buna karşılık
+gerçek zincirlemeyi (`pytest ; rm -rf /`) yakalamakta hiçbir şey
+kazanmazdık — orada noktalı virgül zaten ayrı bir jetondur.
+
+Kabuk kullanılmadığı için bu jetonlar geçse bile bir şey yapmazlardı; yine
+de reddedilirler, çünkü böyle bir komut ya yanlış anlaşılmış bir niyettir
+ya da kasıtlı bir denemedir.
 """
 
 DEFAULT_ALLOWED_COMMANDS: tuple[str, ...] = (
@@ -90,11 +98,10 @@ class CommandPolicy:
         if len(text) > MAX_COMMAND_LENGTH:
             raise CommandNotAllowedError("Komut çok uzun.")
 
-        for token in SHELL_METACHARACTERS:
-            if token in text:
-                raise CommandNotAllowedError(
-                    "Komut kabuk denetim karakteri içeriyor; tek bir program çalıştırın."
-                )
+        # Satır sonu hiçbir meşru tek-program çağrısında bulunmaz; çok
+        # satırlı bir komut ayrıştırmadan önce reddedilir.
+        if "\n" in text or "\r" in text:
+            raise CommandNotAllowedError("Komut tek satır olmalıdır.")
 
         try:
             argv = shlex.split(text, posix=True)
@@ -105,6 +112,11 @@ class CommandPolicy:
             raise CommandNotAllowedError("Komut boş.")
         if len(argv) > MAX_ARGUMENT_COUNT:
             raise CommandNotAllowedError("Komut çok fazla argüman içeriyor.")
+
+        if SHELL_CONTROL_TOKENS & set(argv):
+            raise CommandNotAllowedError(
+                "Komut zincirleme denemesi içeriyor; tek bir program çalıştırın."
+            )
 
         program = _program_name(argv[0])
         if program not in self._allowed:

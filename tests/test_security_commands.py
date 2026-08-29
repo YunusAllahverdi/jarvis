@@ -4,15 +4,17 @@ Kapsam:
  1. Tanınan komut argüman listesine çevrilir
  2. Tırnaklı argümanlar korunur
  3. Boş komut reddedilir
- 4. Kabuk denetim karakterleri reddedilir (zincirleme, boru, yönlendirme)
- 5. Ayrıştırılamayan komut reddedilir
- 6. Tanınmayan program reddedilir
- 7. Yol öneki atılır; listedeki ad kullanılır
- 8. Yerel bir programın listedeki adı taklit etmesi engellenir
- 9. Windows uzantıları ve büyük/küçük harf korumayı atlatmaz
-10. Boş liste hiçbir komuta izin vermez
-11. Aşırı uzun ve aşırı argümanlı komutlar reddedilir
-12. Hata mesajı izin listesini sızdırmaz
+ 4. Zincirleme/boru/yönlendirme JETONLARI reddedilir
+ 5. Tırnak içindeki noktalı virgül meşrudur ve reddedilmez
+ 6. Genişletme sözdizimi düz metin olarak geçer (kabuk yok)
+ 7. Ayrıştırılamayan komut reddedilir
+ 8. Tanınmayan program reddedilir
+ 9. Yol öneki atılır; listedeki ad kullanılır
+10. Yerel bir programın listedeki adı taklit etmesi engellenir
+11. Windows uzantıları ve büyük/küçük harf korumayı atlatmaz
+12. Boş liste hiçbir komuta izin vermez
+13. Aşırı uzun ve aşırı argümanlı komutlar reddedilir
+14. Hata mesajı izin listesini sızdırmaz
 """
 
 from __future__ import annotations
@@ -67,8 +69,6 @@ def test_empty_command_is_refused(policy: CommandPolicy, command: str) -> None:
         "pytest | tee cikti.txt",
         "pytest > cikti.txt",
         "pytest < girdi.txt",
-        "pytest `whoami`",
-        "pytest $(whoami)",
         "pytest\nrm -rf /",
     ],
 )
@@ -80,6 +80,28 @@ def test_shell_control_is_refused(policy: CommandPolicy, command: str) -> None:
     """
     with pytest.raises(CommandNotAllowedError):
         policy.parse(command)
+
+
+def test_a_semicolon_inside_an_argument_is_allowed(policy: CommandPolicy) -> None:
+    """Tırnak içindeki noktalı virgül meşrudur ve reddedilmemeli.
+
+    Denetim ayrıştırmadan sonra yapılır; buradaki `;` tek bir argümanın
+    parçasıdır, ayrı bir jeton değildir.
+    """
+    argv = policy.parse('python -c "import os; print(os.name)"')
+
+    assert argv[-1] == "import os; print(os.name)"
+
+
+def test_shell_expansion_syntax_survives_as_literal_text(policy: CommandPolicy) -> None:
+    """Backtick ve $() düz argüman olarak geçmeli.
+
+    Kabuk kullanılmadığı için bunlar genişletilmez; programa olduğu gibi
+    metin olarak verilirler. Reddetmek, `grep '$(' dosya` gibi meşru
+    kullanımları da engellerdi.
+    """
+    assert list(policy.parse("python `whoami`"))[1] == "`whoami`"
+    assert list(policy.parse("python $(whoami)"))[1] == "$(whoami)"
 
 
 def test_unparseable_command_is_refused(policy: CommandPolicy) -> None:

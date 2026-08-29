@@ -43,6 +43,7 @@ from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
+from app.security.commands import CommandPolicy
 from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.base import PermissionLevel
@@ -50,6 +51,7 @@ from app.tools.defaults import (
     build_default_tool_registry,
     register_context_tools,
     register_filesystem_tools,
+    register_terminal_tool,
 )
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
@@ -122,10 +124,33 @@ def _build_workspace_guard(settings: Settings) -> PathGuard | None:
         return None
 
 
-_AGENT_POLICY = ToolPermissionPolicy(
-    allowed={PermissionLevel.READ},
-    requires_approval={PermissionLevel.WRITE},
-)
+def _build_command_policy(settings: Settings) -> CommandPolicy:
+    """Komut politikasını ayarlardan kurar; liste boşsa varsayılan küme."""
+
+    if settings.terminal_allowed_commands:
+        return CommandPolicy(allowed_commands=settings.terminal_allowed_commands)
+    return CommandPolicy()
+
+
+def _build_agent_policy(settings: Settings) -> ToolPermissionPolicy:
+    """Uygulamanın araç izin duruşunu ayarlardan kurar — tek beyan noktası.
+
+    READ her zaman serbesttir. WRITE her zaman kullanıcı onayına tabidir.
+    DANGEROUS ise yalnızca terminal AÇIKÇA etkinleştirildiğinde onaya
+    tabidir; kapalıyken reddedilir.
+
+    Bu ayrım bilinçlidir: reddedilen bir seviye, onaylanabilir bir seviyeden
+    farklıdır. Terminal kapalıyken DANGEROUS bir aracın var olması bile
+    çalıştırılabilmesi anlamına gelmez — kullanıcı yanlışlıkla onaylayarak
+    açamaz, önce ayarı değiştirmesi gerekir.
+    """
+    approval_levels = {PermissionLevel.WRITE}
+    if settings.terminal_enabled:
+        approval_levels.add(PermissionLevel.DANGEROUS)
+    return ToolPermissionPolicy(
+        allowed={PermissionLevel.READ},
+        requires_approval=approval_levels,
+    )
 """Uygulamanın araç izin duruşu — tek beyan noktası.
 
 READ serbesttir, WRITE kullanıcı onayına tabidir, DANGEROUS reddedilir. Bu fazda o
@@ -244,6 +269,10 @@ def _build_agent_stack(
     workspace_guard: PathGuard | None = None,
     workspace_writable: bool = False,
     approval_service: ApprovalService | None = None,
+    policy_boundary: ToolPermissionPolicy,
+    terminal_enabled: bool = False,
+    command_policy: CommandPolicy | None = None,
+    terminal_timeout_seconds: float = 60.0,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -266,9 +295,16 @@ def _build_agent_stack(
     registered += register_filesystem_tools(
         agent_registry, guard=workspace_guard, writable=workspace_writable
     )
+    registered += register_terminal_tool(
+        agent_registry,
+        guard=workspace_guard,
+        command_policy=command_policy,
+        enabled=terminal_enabled,
+        max_timeout_seconds=terminal_timeout_seconds,
+    )
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
-        policy=_AGENT_POLICY,
+        policy=policy_boundary,
         conversation_store=conversation_store,
         memory_retrieval=memory_retrieval,
         experience_store=experience_store,
@@ -289,7 +325,7 @@ def _build_agent_stack(
         approval_service=approval_service,
         runner=AgentRunner(
             tool_executor=ToolExecutor(
-                agent_registry, policy=_AGENT_POLICY, audit_log=audit_log
+                agent_registry, policy=policy_boundary, audit_log=audit_log
             )
         ),
     )
@@ -418,8 +454,9 @@ def create_app(
     # Başlangıçta bellek içi: kalıcı kayıt bir dosya açar ve bu, uygulama
     # fiilen başlayana kadar yapılmamalıdır (lifespan içinde takas edilir).
     initial_audit_log = InMemoryAuditLog()
+    agent_policy = _build_agent_policy(active_settings)
     chat_tool_executor = ToolExecutor(
-        active_tool_registry, policy=_AGENT_POLICY, audit_log=initial_audit_log
+        active_tool_registry, policy=agent_policy, audit_log=initial_audit_log
     )
 
     chat_orchestrator = ChatOrchestrator(
@@ -524,6 +561,10 @@ def create_app(
                 workspace_guard=_build_workspace_guard(active_settings),
                 workspace_writable=active_settings.workspace_writable,
                 approval_service=app_instance.state.approval_service,
+                policy_boundary=agent_policy,
+                terminal_enabled=active_settings.terminal_enabled,
+                command_policy=_build_command_policy(active_settings),
+                terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

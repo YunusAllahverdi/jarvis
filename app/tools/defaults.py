@@ -2,6 +2,7 @@
 
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
+from app.security.commands import CommandPolicy
 from app.security.paths import PathGuard
 from app.tools.builtin import (
     CalculatorTool,
@@ -12,6 +13,7 @@ from app.tools.builtin import (
     ListDirTool,
     MemorySearchTool,
     ReadFileTool,
+    RunCommandTool,
     WriteFileTool,
     SystemStatusTool,
     UserProfileTool,
@@ -88,3 +90,36 @@ def register_filesystem_tools(
     for tool in tools:
         registry.register(tool)
     return [tool.name for tool in tools]
+
+
+def register_terminal_tool(
+    registry: ToolRegistry,
+    *,
+    guard: PathGuard | None = None,
+    command_policy: CommandPolicy | None = None,
+    enabled: bool = False,
+    max_timeout_seconds: float = 60.0,
+) -> list[str]:
+    """Komut çalıştırma tool'unu kaydeder.
+
+    Üç şart birden gerekir: bir çalışma kökü, bir komut politikası ve açık
+    bir etkinleştirme. Herhangi biri eksikse araç hiç var olmaz.
+
+    Etkinleştirme dosya izinlerinden AYRI bir karardır: dosya okumak ile
+    program çalıştırmak aynı büyüklükte riskler değildir ve tek bir ayarla
+    ifade edilmemelidirler.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if not enabled or guard is None or command_policy is None:
+        return []
+
+    registry.register(
+        RunCommandTool(
+            guard=guard,
+            command_policy=command_policy,
+            max_timeout_seconds=max_timeout_seconds,
+        )
+    )
+    return [RunCommandTool.name]
