@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.adapters.llm.base import LLMProvider, LLMProviderError
+from app.security.redaction import SECRET_PATTERNS
 from app.core.chat import ChatMessage
 from app.memory.record import (
     MemoryRecord,
@@ -55,20 +56,9 @@ _ALLOWED_MEMORY_TYPES: frozenset[MemoryType] = frozenset(
 # Gizlilik / güvenlik: reddedilecek içerik kalıpları
 # ---------------------------------------------------------------------------
 
-_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\bpassword\b", re.IGNORECASE),
-    re.compile(r"\bpasswd\b", re.IGNORECASE),
-    re.compile(r"\bapi[_\s-]?key\b", re.IGNORECASE),
-    re.compile(r"\bsecret[_\s-]?key\b", re.IGNORECASE),
-    re.compile(r"\bauth[_\s-]?token\b", re.IGNORECASE),
-    re.compile(r"\baccess[_\s-]?token\b", re.IGNORECASE),
-    re.compile(r"\bprivate[_\s-]?key\b", re.IGNORECASE),
-    re.compile(r"\bbearer\s+\S+", re.IGNORECASE),
-    re.compile(r"\bsecret\b", re.IGNORECASE),
-    # Yaygın token formatları (hex ≥ 32 karakter, base64 ≥ 32 karakter)
-    re.compile(r"\b[0-9a-fA-F]{32,}\b"),
-    re.compile(r"[A-Za-z0-9+/]{32,}={0,2}"),
-)
+# Kalıplar app.security.redaction'da tanımlıdır: aynı tanımı denetim
+# kaydındaki maskeleme de kullanır, ikisi ayrışmasın.
+_SECRET_PATTERNS = SECRET_PATTERNS
 
 # ---------------------------------------------------------------------------
 # LLM'e gönderilecek çıkarma sistemi prompt'u
