@@ -2,12 +2,14 @@
 
 import json
 import logging
+import time
 from collections.abc import Iterable
 from typing import Any
 
 from pydantic import BaseModel
 
 from app.core.chat import ChatMessage, ToolCall
+from app.security.audit import AuditAction, AuditEvent, AuditLog, AuditOutcome, safe_record
 from app.security.permissions import PermissionDecision, ToolPermissionPolicy
 from app.tools.base import PermissionLevel, ToolExecutionError, ToolInputValidationError
 from app.tools.registry import ToolRegistry
@@ -52,6 +54,10 @@ class ToolExecutor:
     İzin kararı bu sınıfa ait değildir: `ToolPermissionPolicy`'ye sorulur.
     Böylece aynı kural hem burada hem de agent bağlamında geçerli olur ve
     iki yerde ayrışma ihtimali kalmaz.
+
+    Her çağrı — çalışsın ya da çalışmasın — denetim kaydına yazılır.
+    Reddedilen ve onay bekleyen çağrılar da yazılır: bir saldırının izi
+    çoğunlukla başarısız denemelerdedir.
     """
 
     def __init__(
@@ -60,6 +66,7 @@ class ToolExecutor:
         allowed_permissions: Iterable[PermissionLevel] | None = None,
         *,
         policy: ToolPermissionPolicy | None = None,
+        audit_log: AuditLog | None = None,
     ) -> None:
         """
         Args:
@@ -69,9 +76,11 @@ class ToolExecutor:
                 kalan her seviye reddedilir.
             policy: Tam izin politikası. `allowed_permissions` ile birlikte
                 verilemez — ikisi aynı soruya farklı cevap verebilirdi.
+            audit_log: Çağrıların yazılacağı denetim kaydı. Verilmezse hiçbir
+                şey yazılmaz; kayıt tutmak isteyen çağıran açıkça vermelidir.
 
         Raises:
-            ValueError: Her iki argüman da verildiyse ya da hiçbiri verilmediyse.
+            ValueError: Her iki izin argümanı da verildiyse ya da hiçbiri verilmediyse.
         """
         if policy is not None and allowed_permissions is not None:
             raise ValueError(
@@ -86,6 +95,16 @@ class ToolExecutor:
             if policy is not None
             else ToolPermissionPolicy(allowed=allowed_permissions or ())
         )
+        self._audit_log = audit_log
+
+    def set_audit_log(self, audit_log: AuditLog | None) -> None:
+        """Denetim kaydını sonradan bağlar.
+
+        Kalıcı kayıt bir dosya açar; bu yüzden import anında değil, uygulama
+        fiilen başlarken kurulur. Bellek yığınında da aynı geç bağlama
+        kalıbı kullanılıyor.
+        """
+        self._audit_log = audit_log
 
     @property
     def policy(self) -> ToolPermissionPolicy:
@@ -93,7 +112,13 @@ class ToolExecutor:
 
         return self._policy
 
-    async def execute(self, call: ToolCall, *, approved: bool = False) -> ToolExecutionResult:
+    async def execute(
+        self,
+        call: ToolCall,
+        *,
+        approved: bool = False,
+        session_id: str | None = None,
+    ) -> ToolExecutionResult:
         """Tool call'u güvenli biçimde çalıştırır veya LLM'e hata sonucu döndürür.
 
         Args:
@@ -105,63 +130,151 @@ class ToolExecutor:
 
                 Bu bayrağı LLM çıktısından türetmeyin: yalnızca gerçekten
                 onay kaydı tüketilmiş bir akış True geçmelidir.
+            session_id: Denetim kaydına yazılacak oturum kimliği.
         """
 
         tool = self._registry.get(call.name)
         if tool is None:
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                error_code="unknown_tool",
-                error_message="İstenen tool kayıtlı değil.",
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="unknown_tool",
+                    error_message="İstenen tool kayıtlı değil.",
+                ),
+                outcome=AuditOutcome.BLOCKED,
+                session_id=session_id,
             )
 
         decision = self._policy.decide(tool.permission)
+
         if decision is PermissionDecision.DENY:
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                error_code="permission_denied",
-                error_message=f"{tool.permission} izni bu oturumda etkin değil.",
-            )
-        if decision is PermissionDecision.REQUIRE_APPROVAL and not approved:
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                requires_approval=True,
-                error_code="approval_required",
-                error_message=(
-                    f"{tool.permission} izinli '{tool.name}' aracı için kullanıcı "
-                    "onayı gerekiyor."
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="permission_denied",
+                    error_message=f"{tool.permission} izni bu oturumda etkin değil.",
                 ),
+                outcome=AuditOutcome.BLOCKED,
+                permission=tool.permission,
+                decision=decision,
+                session_id=session_id,
+            )
+
+        if decision is PermissionDecision.REQUIRE_APPROVAL and not approved:
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    requires_approval=True,
+                    error_code="approval_required",
+                    error_message=(
+                        f"{tool.permission} izinli '{tool.name}' aracı için kullanıcı "
+                        "onayı gerekiyor."
+                    ),
+                ),
+                outcome=AuditOutcome.PENDING_APPROVAL,
+                permission=tool.permission,
+                decision=decision,
+                session_id=session_id,
             )
 
         try:
             tool_input = tool.validate_input(call.arguments)
         except ToolInputValidationError:
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                error_code="invalid_arguments",
-                error_message="Tool argument'leri şemaya uymuyor.",
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="invalid_arguments",
+                    error_message="Tool argument'leri şemaya uymuyor.",
+                ),
+                outcome=AuditOutcome.FAILURE,
+                permission=tool.permission,
+                decision=decision,
+                session_id=session_id,
             )
 
+        started = time.perf_counter()
         try:
             data = await tool.execute(tool_input)
         except ToolExecutionError as exc:
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                error_code="tool_execution_failed",
-                error_message=str(exc),
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="tool_execution_failed",
+                    error_message=str(exc),
+                ),
+                outcome=AuditOutcome.FAILURE,
+                permission=tool.permission,
+                decision=decision,
+                session_id=session_id,
+                started=started,
             )
         except Exception:
             logger.exception("tool_execution_unexpected_error", extra={"tool_name": tool.name})
-            return ToolExecutionResult(
-                tool_name=call.name,
-                success=False,
-                error_code="tool_execution_failed",
-                error_message="Tool çalıştırılırken beklenmeyen bir hata oluştu.",
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="tool_execution_failed",
+                    error_message="Tool çalıştırılırken beklenmeyen bir hata oluştu.",
+                ),
+                outcome=AuditOutcome.FAILURE,
+                permission=tool.permission,
+                decision=decision,
+                session_id=session_id,
+                started=started,
             )
 
-        return ToolExecutionResult(tool_name=call.name, success=True, data=data)
+        return self._finish(
+            call,
+            ToolExecutionResult(tool_name=call.name, success=True, data=data),
+            outcome=AuditOutcome.SUCCESS,
+            permission=tool.permission,
+            decision=decision,
+            session_id=session_id,
+            started=started,
+        )
+
+    def _finish(
+        self,
+        call: ToolCall,
+        result: ToolExecutionResult,
+        *,
+        outcome: AuditOutcome,
+        permission: PermissionLevel | None = None,
+        decision: PermissionDecision | None = None,
+        session_id: str | None = None,
+        started: float | None = None,
+    ) -> ToolExecutionResult:
+        """Sonucu denetim kaydına yazar ve olduğu gibi döndürür.
+
+        Her çıkış yolu buradan geçer; yeni bir dal eklendiğinde kaydın
+        atlanması için ayrıca bir şey yapılması gerekir.
+        """
+        safe_record(
+            self._audit_log,
+            AuditEvent(
+                action=AuditAction.TOOL_CALL,
+                outcome=outcome,
+                tool_name=call.name,
+                arguments=dict(call.arguments),
+                permission=permission,
+                decision=decision,
+                session_id=session_id,
+                error_code=result.error_code,
+                duration_ms=(
+                    None if started is None else round((time.perf_counter() - started) * 1000, 3)
+                ),
+            ),
+        )
+        return result

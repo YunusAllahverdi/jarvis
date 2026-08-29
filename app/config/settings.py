@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     agent_chat_integration: bool = True
 
     # ------------------------------------------------------------------
+    # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
+    # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
+    # başlatmayı atlatmalıdır.
+    audit_db_path: str = ""
+
     # Kullanıcı onayı
     # Bir onay isteğinin geçerli kalma süresi. Kısa tutulur: onay, belirli
     # bir andaki duruma verilmiş bir karardır; dakikalar sonra dünya

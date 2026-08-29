@@ -1,6 +1,7 @@
 """Jarvis FastAPI uygulamasının başlangıç noktası."""
 
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -41,6 +42,7 @@ from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
 from app.security.approvals import ApprovalService
+from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.defaults import build_default_tool_registry, register_context_tools
 from app.tools.executor import ToolExecutor
@@ -82,6 +84,17 @@ def _build_user_model_stack(
         experience_store=experience_store,
     )
     return learning_service, user_model_service
+
+
+def _resolve_audit_db_path(settings: Settings) -> str:
+    """Denetim kaydının yazılacağı veritabanı yolunu belirler.
+
+    Varsayılan olarak bellek veritabanının AYNISIDIR; denetim olayları orada
+    ayrı bir tabloda durur. Proje tek bir kullanıcı veri dosyası tutmayı
+    tercih ediyor — ikinci bir dosya, yedeklemede unutulabilecek ikinci bir
+    şey demek olurdu.
+    """
+    return settings.audit_db_path or settings.memory_db_path
 
 
 _AGENT_POLICY = ToolPermissionPolicy.read_only()
@@ -199,6 +212,7 @@ def _build_agent_stack(
     policy: DecisionPolicy | None = None,
     council_service: CouncilService | None = None,
     council_gate: CouncilGate | None = None,
+    audit_log: AuditLog | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -237,7 +251,9 @@ def _build_agent_stack(
         council_service=council_service,
         council_gate=council_gate,
         runner=AgentRunner(
-            tool_executor=ToolExecutor(agent_registry, policy=_AGENT_POLICY)
+            tool_executor=ToolExecutor(
+                agent_registry, policy=_AGENT_POLICY, audit_log=audit_log
+            )
         ),
     )
 
@@ -362,12 +378,19 @@ def create_app(
         else None
     )
 
+    # Başlangıçta bellek içi: kalıcı kayıt bir dosya açar ve bu, uygulama
+    # fiilen başlayana kadar yapılmamalıdır (lifespan içinde takas edilir).
+    initial_audit_log = InMemoryAuditLog()
+    chat_tool_executor = ToolExecutor(
+        active_tool_registry, policy=_AGENT_POLICY, audit_log=initial_audit_log
+    )
+
     chat_orchestrator = ChatOrchestrator(
         provider=active_provider,
         conversation_store=active_conversation_store,
         prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
         tool_registry=active_tool_registry,
-        tool_executor=ToolExecutor(active_tool_registry, policy=_AGENT_POLICY),
+        tool_executor=chat_tool_executor,
         memory_service=initial_memory_service,
         memory_retrieval=initial_memory_retrieval,
         experience_store=initial_experience_store,
@@ -435,6 +458,15 @@ def create_app(
             app_instance.state.learning_service = startup_learning
             app_instance.state.user_model_service = startup_user_model
 
+        # Kalıcı denetim kaydı yalnızca veritabanına zaten dokunulan
+        # kurulumlarda açılır. Sağlayıcı enjekte edildiğinde hiçbir dosya
+        # oluşturulmaz; o durumda kayıt bellekte kalır.
+        startup_audit_log: AuditLog = initial_audit_log
+        if auto_wire_memory_on_startup:
+            startup_audit_log = SQLiteAuditLog(_resolve_audit_db_path(active_settings))
+            app_instance.state.audit_log = startup_audit_log
+            chat_tool_executor.set_audit_log(startup_audit_log)
+
         if auto_wire_agent_on_startup:
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
@@ -451,6 +483,7 @@ def create_app(
                 ),
                 council_service=initial_council_service,
                 council_gate=council_gate,
+                audit_log=startup_audit_log,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor
@@ -495,6 +528,8 @@ def create_app(
     )
     # Onaylı çağrının geçeceği sınır, ajan yığını kurulduğunda atanır.
     app.state.approval_executor = None
+    app.state.audit_log = initial_audit_log
+    app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
     app.state.memory_retrieval = initial_memory_retrieval

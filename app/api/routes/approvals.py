@@ -15,6 +15,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.security.audit import AuditAction, AuditEvent, AuditOutcome, safe_record
 from app.security.approvals import (
     ApprovalAlreadyDecidedError,
     ApprovalExpiredError,
@@ -119,8 +120,22 @@ async def decide(
 
     service = _approval_service(request)
 
+    audit_log = getattr(request.app.state, "audit_log", None)
+
     if body.decision == "reject":
         record = _decide(service.reject, approval_id)
+        safe_record(
+            audit_log,
+            AuditEvent(
+                action=AuditAction.APPROVAL_REJECTED,
+                outcome=AuditOutcome.BLOCKED,
+                tool_name=record.tool_name,
+                arguments=dict(record.arguments),
+                permission=record.permission,
+                session_id=record.session_id,
+                approval_id=approval_id,
+            ),
+        )
         return ApprovalDecisionResponse(
             approval_id=approval_id,
             status="rejected",
@@ -139,9 +154,24 @@ async def decide(
 
     # Çağrı kayıttan gelir. Onay burada tüketilir: bu satırdan sonra aynı
     # kimlik bir daha çalışmaz, çalıştırma başarısız olsa bile.
+    stored = service.get(approval_id)
     call = _decide(service.approve, approval_id)
+    safe_record(
+        audit_log,
+        AuditEvent(
+            action=AuditAction.APPROVAL_GRANTED,
+            outcome=AuditOutcome.SUCCESS,
+            tool_name=call.name,
+            arguments=dict(call.arguments),
+            permission=stored.permission if stored else None,
+            session_id=stored.session_id if stored else None,
+            approval_id=approval_id,
+        ),
+    )
 
-    result = await executor.execute(call, approved=True)
+    result = await executor.execute(
+        call, approved=True, session_id=stored.session_id if stored else None
+    )
     return ApprovalDecisionResponse(
         approval_id=approval_id,
         status="approved",
