@@ -259,3 +259,185 @@ def test_invalid_workspace_disables_the_tools_without_crashing(tmp_path: Path) -
 
     with TestClient(app):
         assert not ({"read_file", "list_dir", "grep"} & _agent_tool_names(app))
+
+
+# ---------------------------------------------------------------------------
+# 19-31. Yazma tarafı
+# ---------------------------------------------------------------------------
+
+from app.core.chat import ToolCall  # noqa: E402
+from app.security.permissions import ToolPermissionPolicy  # noqa: E402
+from app.tools.builtin.filesystem import EditFileTool, WriteFileTool  # noqa: E402
+from app.tools.executor import ToolExecutor  # noqa: E402
+
+
+def _app_policy() -> ToolPermissionPolicy:
+    """Uygulamanın gerçek duruşu: READ serbest, WRITE onaya tabi."""
+    return ToolPermissionPolicy(
+        allowed={PermissionLevel.READ}, requires_approval={PermissionLevel.WRITE}
+    )
+
+
+def test_write_file_creates_a_new_file(guard: PathGuard, workspace: Path) -> None:
+    """Yeni dosya oluşturulabilmeli ve bu bildirilmeli."""
+    result = _run(
+        WriteFileTool(guard=guard).execute(
+            WriteFileTool.input_model(path="app/yeni.py", content="print('selam')\n")
+        )
+    )
+
+    assert result["created"] is True
+    assert (workspace / "app" / "yeni.py").read_text(encoding="utf-8") == "print('selam')\n"
+
+
+def test_write_file_reports_an_overwrite(guard: PathGuard) -> None:
+    """Var olan dosyanın üzerine yazmak yeni oluşturmakla karıştırılmamalı."""
+    result = _run(
+        WriteFileTool(guard=guard).execute(
+            WriteFileTool.input_model(path="app/main.py", content="yeni içerik")
+        )
+    )
+
+    assert result["created"] is False
+
+
+def test_write_file_refuses_closed_paths(guard: PathGuard, workspace: Path) -> None:
+    """Yazma da bekçiden geçmeli; `.env` değiştirilememeli."""
+    with pytest.raises(ToolExecutionError):
+        _run(
+            WriteFileTool(guard=guard).execute(
+                WriteFileTool.input_model(path=".env", content="JARVIS_API_KEY=ele-gecirildi")
+            )
+        )
+
+    assert "cok-gizli-deger" in (workspace / ".env").read_text(encoding="utf-8")
+
+
+def test_edit_file_replaces_a_unique_match(guard: PathGuard, workspace: Path) -> None:
+    """Benzersiz eşleşme değiştirilebilmeli."""
+    result = _run(
+        EditFileTool(guard=guard).execute(
+            EditFileTool.input_model(
+                path="app/main.py", old_string="'selam'", new_string="'merhaba'"
+            )
+        )
+    )
+
+    assert result["replaced"] == 1
+    assert "'merhaba'" in (workspace / "app" / "main.py").read_text(encoding="utf-8")
+
+
+def test_edit_file_refuses_an_ambiguous_match(guard: PathGuard, workspace: Path) -> None:
+    """Birden çok eşleşme varsa değişiklik yapılmamalı.
+
+    Hangi eşleşmenin kastedildiği tahmin edilseydi, onaylanan değişiklik
+    ile yapılan değişiklik farklı olabilirdi.
+    """
+    target = workspace / "tekrar.txt"
+    target.write_text("aynı\naynı\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError) as exc:
+        _run(
+            EditFileTool(guard=guard).execute(
+                EditFileTool.input_model(path="tekrar.txt", old_string="aynı", new_string="farklı")
+            )
+        )
+
+    assert "benzersiz" in str(exc.value).lower()
+    assert target.read_text(encoding="utf-8") == "aynı\naynı\n", "dosya değişmemeliydi"
+
+
+def test_edit_file_refuses_a_missing_match(guard: PathGuard) -> None:
+    """Bulunmayan metin için açık hata verilmeli."""
+    with pytest.raises(ToolExecutionError):
+        _run(
+            EditFileTool(guard=guard).execute(
+                EditFileTool.input_model(
+                    path="app/main.py", old_string="hiç yok", new_string="x"
+                )
+            )
+        )
+
+
+def test_write_tools_are_write_permission(guard: PathGuard) -> None:
+    """Yazma araçları WRITE olmalı ki onay kapısına takılsınlar."""
+    for tool in (WriteFileTool(guard=guard), EditFileTool(guard=guard)):
+        assert tool.permission is PermissionLevel.WRITE
+
+
+def test_write_tools_need_an_explicit_grant(guard: PathGuard) -> None:
+    """Okuma izni tek başına yazma yetkisi vermemeli."""
+    registry = ToolRegistry()
+
+    registered = register_filesystem_tools(registry, guard=guard)
+
+    assert set(registered) == {"read_file", "list_dir", "grep"}
+    assert "write_file" not in registered
+
+
+def test_writing_without_approval_is_blocked_and_changes_nothing(
+    guard: PathGuard, workspace: Path
+) -> None:
+    """Onay alınmadan dosya DEĞİŞMEMELİ — Faz 1 kapısının asıl sınavı."""
+    registry = ToolRegistry()
+    register_filesystem_tools(registry, guard=guard, writable=True)
+    executor = ToolExecutor(registry, policy=_app_policy())
+
+    result = _run(
+        executor.execute(
+            ToolCall(name="write_file", arguments={"path": "app/main.py", "content": "silindi"})
+        )
+    )
+
+    assert result.success is False
+    assert result.requires_approval is True
+    assert "def merhaba" in (workspace / "app" / "main.py").read_text(encoding="utf-8")
+
+
+def test_writing_with_approval_goes_through(guard: PathGuard, workspace: Path) -> None:
+    """Onay verildiğinde aynı çağrı çalışmalı."""
+    registry = ToolRegistry()
+    register_filesystem_tools(registry, guard=guard, writable=True)
+    executor = ToolExecutor(registry, policy=_app_policy())
+
+    result = _run(
+        executor.execute(
+            ToolCall(name="write_file", arguments={"path": "onayli.txt", "content": "tamam"}),
+            approved=True,
+        )
+    )
+
+    assert result.success is True
+    assert (workspace / "onayli.txt").read_text(encoding="utf-8") == "tamam"
+
+
+def test_writing_leaves_no_temporary_file_behind(guard: PathGuard, workspace: Path) -> None:
+    """Atomik yazma geçici dosya bırakmamalı."""
+    _run(
+        WriteFileTool(guard=guard).execute(
+            WriteFileTool.input_model(path="gecici.txt", content="içerik")
+        )
+    )
+
+    assert list(workspace.glob("*.jarvis-tmp")) == []
+
+
+def test_app_separates_reading_from_writing(tmp_path: Path, workspace: Path) -> None:
+    """Yazma izni ayrıca verilmeden yazma araçları kaydedilmemeli."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    read_only = create_app(settings=_app_settings(tmp_path, workspace_root=str(workspace)))
+    with TestClient(read_only):
+        names = _agent_tool_names(read_only)
+        assert "read_file" in names
+        assert "write_file" not in names
+
+    writable = create_app(
+        settings=_app_settings(
+            tmp_path, workspace_root=str(workspace), workspace_writable=True
+        )
+    )
+    with TestClient(writable):
+        assert {"write_file", "edit_file"} <= _agent_tool_names(writable)

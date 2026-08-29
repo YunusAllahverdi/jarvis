@@ -45,6 +45,7 @@ from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
+from app.tools.base import PermissionLevel
 from app.tools.defaults import (
     build_default_tool_registry,
     register_context_tools,
@@ -121,10 +122,13 @@ def _build_workspace_guard(settings: Settings) -> PathGuard | None:
         return None
 
 
-_AGENT_POLICY = ToolPermissionPolicy.read_only()
+_AGENT_POLICY = ToolPermissionPolicy(
+    allowed={PermissionLevel.READ},
+    requires_approval={PermissionLevel.WRITE},
+)
 """Uygulamanın araç izin duruşu — tek beyan noktası.
 
-Yalnızca READ serbesttir; WRITE ve DANGEROUS reddedilir. Bu fazda o
+READ serbesttir, WRITE kullanıcı onayına tabidir, DANGEROUS reddedilir. Bu fazda o
 seviyelerde tool yoktur, dolayısıyla ret pratikte bir şeyi engellemiyor —
 ama varsayılanı burada açıkça yazmak, ileride bir tool eklendiğinde onun
 sessizce serbest kalmamasını garanti eder.
@@ -238,6 +242,7 @@ def _build_agent_stack(
     council_gate: CouncilGate | None = None,
     audit_log: AuditLog | None = None,
     workspace_guard: PathGuard | None = None,
+    workspace_writable: bool = False,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -257,7 +262,9 @@ def _build_agent_stack(
     )
     # Dosya araçları YALNIZCA agent registry'sine eklenir; sohbetin LLM'e
     # sunduğu tool yüzeyi değişmez.
-    registered += register_filesystem_tools(agent_registry, guard=workspace_guard)
+    registered += register_filesystem_tools(
+        agent_registry, guard=workspace_guard, writable=workspace_writable
+    )
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
         policy=_AGENT_POLICY,
@@ -513,6 +520,7 @@ def create_app(
                 council_gate=council_gate,
                 audit_log=startup_audit_log,
                 workspace_guard=_build_workspace_guard(active_settings),
+                workspace_writable=active_settings.workspace_writable,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

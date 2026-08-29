@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # erişimi kullanıcının açıkça verdiği bir yetkidir.
     workspace_root: str = ""
 
+    # Ajanın çalışma kökünde DEĞİŞİKLİK yapıp yapamayacağı.
+    # Okumaktan ayrı bir karardır: kullanıcı ajanın depoyu incelemesini
+    # isteyip değiştirmesini istemeyebilir. Açık olsa bile her yazma
+    # kullanıcı onayından geçer.
+    workspace_writable: bool = False
+
     # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
     # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
     # başlatmayı atlatmalıdır.

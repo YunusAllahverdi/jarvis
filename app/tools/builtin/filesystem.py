@@ -1,15 +1,19 @@
-"""Ajanın çalışma dizinini okumasını sağlayan tool'lar.
+"""Ajanın çalışma dizinini okuyup değiştirmesini sağlayan tool'lar.
 
-Üçü de salt okunurdur ve üçü de aynı `PathGuard`'dan geçer. Bekçi tek bir
-örnek olarak enjekte edilir: üç araç aynı sınırı paylaşmalıdır, yoksa biri
-sıkılaştırıldığında diğerleri açık kalabilirdi.
+Hepsi aynı `PathGuard`'dan geçer. Bekçi tek bir örnek olarak enjekte
+edilir: araçlar aynı sınırı paylaşmalıdır, yoksa biri sıkılaştırıldığında
+diğerleri açık kalabilirdi.
+
+Okuma araçları READ, yazma araçları WRITE izinlidir. WRITE, uygulama
+politikasında onaya bağlıdır: yazma araçları kullanıcı onaylamadan
+çalışmaz.
 
 Dönen yollar her zaman köke GÖRELİDİR. Mutlak yol döndürmek, reddedilmiş
 bir isteğin bile dosya sisteminin yapısını sızdırmasına yol açardı.
 
-Bu araçlar varsayılan registry'ye otomatik eklenmez; yalnızca bir çalışma
-kökü yapılandırıldığında kaydedilirler. Kök tanımlanmadan ajanın dosya
-okuması diye bir şey yoktur.
+Bu araçlar varsayılan registry'ye otomatik eklenmez. Okuma araçları bir
+çalışma kökü yapılandırıldığında, yazma araçları ise AYRICA yazma izni
+verildiğinde kaydedilir — okumak ve yazmak iki ayrı karardır.
 """
 
 from __future__ import annotations
@@ -258,3 +262,111 @@ def _resolve_or_fail(guard: PathGuard, path: str) -> Path:
         return guard.resolve(path)
     except PathNotAllowedError as exc:
         raise ToolExecutionError(str(exc)) from exc
+
+
+MAX_WRITE_BYTES = 512 * 1024
+"""Tek bir yazma çağrısında kabul edilecek en fazla bayt."""
+
+
+class WriteFileInput(ToolInput):
+    """`write_file` tool'unun doğrulanmış input'u."""
+
+    path: str = Field(min_length=1, max_length=1024)
+    content: str = Field(max_length=MAX_WRITE_BYTES)
+
+
+class WriteFileTool(Tool[WriteFileInput]):
+    """Çalışma dizinine bir metin dosyası yazar (WRITE — onay gerektirir)."""
+
+    name = "write_file"
+    description = "Çalışma dizinindeki bir dosyanın içeriğini yazar veya değiştirir."
+    permission = PermissionLevel.WRITE
+    input_model = WriteFileInput
+
+    def __init__(self, *, guard: PathGuard) -> None:
+        self._guard = guard
+
+    async def execute(self, tool_input: WriteFileInput) -> dict[str, Any]:
+        target = _resolve_or_fail(self._guard, tool_input.path)
+
+        if target.is_dir():
+            raise ToolExecutionError("Hedef bir klasör.")
+
+        existed = target.is_file()
+        _write_atomically(target, tool_input.content)
+
+        return {
+            "path": _relative(target, self._guard),
+            # Üzerine mi yazıldı yoksa yeni mi oluştu — kullanıcı sonradan
+            # neyin değiştiğini bilmeli.
+            "created": not existed,
+            "bytes_written": len(tool_input.content.encode("utf-8")),
+        }
+
+
+class EditFileInput(ToolInput):
+    """`edit_file` tool'unun doğrulanmış input'u."""
+
+    path: str = Field(min_length=1, max_length=1024)
+    old_string: str = Field(min_length=1, max_length=MAX_WRITE_BYTES)
+    new_string: str = Field(max_length=MAX_WRITE_BYTES)
+
+
+class EditFileTool(Tool[EditFileInput]):
+    """Bir dosyada tam eşleşen bir metni değiştirir (WRITE — onay gerektirir)."""
+
+    name = "edit_file"
+    description = (
+        "Bir dosyada tam olarak eşleşen bir metni yenisiyle değiştirir. "
+        "Eşleşme benzersiz olmalıdır."
+    )
+    permission = PermissionLevel.WRITE
+    input_model = EditFileInput
+
+    def __init__(self, *, guard: PathGuard) -> None:
+        self._guard = guard
+
+    async def execute(self, tool_input: EditFileInput) -> dict[str, Any]:
+        target = _resolve_or_fail(self._guard, tool_input.path)
+
+        if not target.is_file():
+            raise ToolExecutionError("Dosya bulunamadı.")
+
+        try:
+            original = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ToolExecutionError("Dosya metin olarak okunamadı.") from exc
+
+        occurrences = original.count(tool_input.old_string)
+        if occurrences == 0:
+            raise ToolExecutionError("Değiştirilecek metin dosyada bulunamadı.")
+        if occurrences > 1:
+            # Belirsiz düzenleme reddedilir: hangi eşleşmenin kastedildiği
+            # tahmin edilseydi, onaylanan değişiklik ile yapılan değişiklik
+            # farklı olabilirdi.
+            raise ToolExecutionError(
+                f"Metin {occurrences} kez geçiyor; değişiklik benzersiz olmalı."
+            )
+
+        _write_atomically(target, original.replace(tool_input.old_string, tool_input.new_string, 1))
+
+        return {
+            "path": _relative(target, self._guard),
+            "replaced": 1,
+        }
+
+
+def _write_atomically(target: Path, content: str) -> None:
+    """İçeriği geçici bir dosyaya yazıp yerine taşır.
+
+    Doğrudan yazmak, yazma yarıda kalırsa dosyayı bozuk bırakırdı. Geçici
+    dosya aynı dizinde açılır ki taşıma aynı disk bölümünde kalsın.
+    """
+    temporary = target.with_name(target.name + ".jarvis-tmp")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(target)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise ToolExecutionError("Dosya yazılamadı.") from exc

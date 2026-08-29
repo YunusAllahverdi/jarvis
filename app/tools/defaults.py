@@ -6,11 +6,13 @@ from app.security.paths import PathGuard
 from app.tools.builtin import (
     CalculatorTool,
     GetDateTool,
+    EditFileTool,
     GetTimeTool,
     GrepTool,
     ListDirTool,
     MemorySearchTool,
     ReadFileTool,
+    WriteFileTool,
     SystemStatusTool,
     UserProfileTool,
 )
@@ -58,6 +60,7 @@ def register_filesystem_tools(
     registry: ToolRegistry,
     *,
     guard: PathGuard | None = None,
+    writable: bool = False,
 ) -> list[str]:
     """Çalışma dizinini okuyan tool'ları kaydeder.
 
@@ -66,7 +69,11 @@ def register_filesystem_tools(
     kullanıcının bir çalışma kökü belirlemesiyle açılmalıdır, uygulamanın
     kendiliğinden verdiği bir yetki olmamalıdır.
 
-    Üç araç AYNI bekçi örneğini paylaşır; ayrı ayrı kurulsalardı biri
+    Yazma araçları AYRICA `writable` gerektirir. Okumak ve yazmak iki ayrı
+    karardır: kullanıcı ajanın deposunu incelemesini isteyip değiştirmesini
+    istemeyebilir ve tek bir ayar bunu ifade edemezdi.
+
+    Tüm araçlar AYNI bekçi örneğini paylaşır; ayrı ayrı kurulsalardı biri
     sıkılaştırıldığında diğerleri geride kalabilirdi.
 
     Returns:
@@ -75,7 +82,9 @@ def register_filesystem_tools(
     if guard is None:
         return []
 
-    tools = (ReadFileTool(guard=guard), ListDirTool(guard=guard), GrepTool(guard=guard))
+    tools: list = [ReadFileTool(guard=guard), ListDirTool(guard=guard), GrepTool(guard=guard)]
+    if writable:
+        tools += [WriteFileTool(guard=guard), EditFileTool(guard=guard)]
     for tool in tools:
         registry.register(tool)
     return [tool.name for tool in tools]
