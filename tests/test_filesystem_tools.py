@@ -366,13 +366,18 @@ def test_write_tools_are_write_permission(guard: PathGuard) -> None:
 
 
 def test_write_tools_need_an_explicit_grant(guard: PathGuard) -> None:
-    """Okuma izni tek başına yazma yetkisi vermemeli."""
+    """Okuma izni tek başına yazma yetkisi vermemeli.
+
+    Salt-okunur git araçları okuma yeteneğinin parçasıdır: ne değiştiğini
+    görmek için dosya değiştirebilmek gerekmez.
+    """
     registry = ToolRegistry()
 
     registered = register_filesystem_tools(registry, guard=guard)
 
-    assert set(registered) == {"read_file", "list_dir", "grep"}
+    assert set(registered) == {"read_file", "list_dir", "grep", "git_status", "git_diff"}
     assert "write_file" not in registered
+    assert "edit_file" not in registered
 
 
 def test_writing_without_approval_is_blocked_and_changes_nothing(

@@ -24,6 +24,7 @@ from typing import Any
 
 from pydantic import Field
 
+from app.security.checkpoints import ChangeJournal
 from app.security.paths import PathGuard, PathNotAllowedError
 from app.tools.base import PermissionLevel, Tool, ToolExecutionError, ToolInput
 
@@ -283,8 +284,15 @@ class WriteFileTool(Tool[WriteFileInput]):
     permission = PermissionLevel.WRITE
     input_model = WriteFileInput
 
-    def __init__(self, *, guard: PathGuard) -> None:
+    def __init__(self, *, guard: PathGuard, journal: ChangeJournal | None = None) -> None:
+        """
+        Args:
+            guard: Yol denetimi.
+            journal: Değişiklikten önceki hâli kaydeden günlük. Verilmezse
+                yazma yine yapılır ama geri alınamaz; sonuçta bu görünür.
+        """
         self._guard = guard
+        self._journal = journal
 
     async def execute(self, tool_input: WriteFileInput) -> dict[str, Any]:
         target = _resolve_or_fail(self._guard, tool_input.path)
@@ -293,6 +301,7 @@ class WriteFileTool(Tool[WriteFileInput]):
             raise ToolExecutionError("Hedef bir klasör.")
 
         existed = target.is_file()
+        checkpoint_id = self._checkpoint(target, "write_file")
         _write_atomically(target, tool_input.content)
 
         return {
@@ -301,7 +310,18 @@ class WriteFileTool(Tool[WriteFileInput]):
             # neyin değiştiğini bilmeli.
             "created": not existed,
             "bytes_written": len(tool_input.content.encode("utf-8")),
+            # Geri alınabilirlik sessiz kalmaz: kimlik yoksa bu değişiklik
+            # geri alınamaz demektir.
+            "checkpoint_id": checkpoint_id,
         }
+
+    def _checkpoint(self, target: Path, reason: str) -> str | None:
+        """Değişiklikten önceki hâli kaydeder; kaydedilemezse None döner."""
+
+        if self._journal is None:
+            return None
+        record = self._journal.record(target, reason=reason)
+        return record.checkpoint_id if record and record.restorable else None
 
 
 class EditFileInput(ToolInput):
@@ -323,8 +343,14 @@ class EditFileTool(Tool[EditFileInput]):
     permission = PermissionLevel.WRITE
     input_model = EditFileInput
 
-    def __init__(self, *, guard: PathGuard) -> None:
+    def __init__(self, *, guard: PathGuard, journal: ChangeJournal | None = None) -> None:
+        """
+        Args:
+            guard: Yol denetimi.
+            journal: Değişiklikten önceki hâli kaydeden günlük.
+        """
         self._guard = guard
+        self._journal = journal
 
     async def execute(self, tool_input: EditFileInput) -> dict[str, Any]:
         target = _resolve_or_fail(self._guard, tool_input.path)
@@ -348,12 +374,22 @@ class EditFileTool(Tool[EditFileInput]):
                 f"Metin {occurrences} kez geçiyor; değişiklik benzersiz olmalı."
             )
 
+        checkpoint_id = self._checkpoint(target, "edit_file")
         _write_atomically(target, original.replace(tool_input.old_string, tool_input.new_string, 1))
 
         return {
             "path": _relative(target, self._guard),
             "replaced": 1,
+            "checkpoint_id": checkpoint_id,
         }
+
+    def _checkpoint(self, target: Path, reason: str) -> str | None:
+        """Değişiklikten önceki hâli kaydeder; kaydedilemezse None döner."""
+
+        if self._journal is None:
+            return None
+        record = self._journal.record(target, reason=reason)
+        return record.checkpoint_id if record and record.restorable else None
 
 
 def _write_atomically(target: Path, content: str) -> None:

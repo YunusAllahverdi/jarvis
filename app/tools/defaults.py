@@ -2,6 +2,7 @@
 
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
+from app.security.checkpoints import ChangeJournal
 from app.security.commands import CommandPolicy
 from app.security.paths import PathGuard
 from app.tools.builtin import (
@@ -9,6 +10,8 @@ from app.tools.builtin import (
     GetDateTool,
     EditFileTool,
     GetTimeTool,
+    GitDiffTool,
+    GitStatusTool,
     GrepTool,
     ListDirTool,
     MemorySearchTool,
@@ -63,6 +66,7 @@ def register_filesystem_tools(
     *,
     guard: PathGuard | None = None,
     writable: bool = False,
+    journal: ChangeJournal | None = None,
 ) -> list[str]:
     """Çalışma dizinini okuyan tool'ları kaydeder.
 
@@ -84,9 +88,21 @@ def register_filesystem_tools(
     if guard is None:
         return []
 
-    tools: list = [ReadFileTool(guard=guard), ListDirTool(guard=guard), GrepTool(guard=guard)]
+    tools: list = [
+        ReadFileTool(guard=guard),
+        ListDirTool(guard=guard),
+        GrepTool(guard=guard),
+        # Değişiklikleri görünür kılan salt-okunur git araçları okuma
+        # yeteneğinin parçasıdır: ne değiştiğini görmek için yazabilmek
+        # gerekmez.
+        GitStatusTool(guard=guard),
+        GitDiffTool(guard=guard),
+    ]
     if writable:
-        tools += [WriteFileTool(guard=guard), EditFileTool(guard=guard)]
+        tools += [
+            WriteFileTool(guard=guard, journal=journal),
+            EditFileTool(guard=guard, journal=journal),
+        ]
     for tool in tools:
         registry.register(tool)
     return [tool.name for tool in tools]

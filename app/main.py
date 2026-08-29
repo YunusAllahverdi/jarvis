@@ -18,6 +18,7 @@ from app.agent.runner import AgentRunner
 from app.api.routes.agent import router as agent_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.chat import router as chat_router
+from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.health import router as health_router
 from app.api.routes.user_model import router as user_model_router
 from app.config.settings import Settings, get_settings
@@ -43,6 +44,7 @@ from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
+from app.security.checkpoints import SQLiteCheckpointStore
 from app.security.commands import CommandPolicy
 from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
@@ -268,6 +270,7 @@ def _build_agent_stack(
     audit_log: AuditLog | None = None,
     workspace_guard: PathGuard | None = None,
     workspace_writable: bool = False,
+    change_journal: object | None = None,
     approval_service: ApprovalService | None = None,
     policy_boundary: ToolPermissionPolicy,
     terminal_enabled: bool = False,
@@ -293,7 +296,10 @@ def _build_agent_stack(
     # Dosya araçları YALNIZCA agent registry'sine eklenir; sohbetin LLM'e
     # sunduğu tool yüzeyi değişmez.
     registered += register_filesystem_tools(
-        agent_registry, guard=workspace_guard, writable=workspace_writable
+        agent_registry,
+        guard=workspace_guard,
+        writable=workspace_writable,
+        journal=change_journal,
     )
     registered += register_terminal_tool(
         agent_registry,
@@ -541,6 +547,12 @@ def create_app(
             app_instance.state.audit_log = startup_audit_log
             chat_tool_executor.set_audit_log(startup_audit_log)
 
+        workspace_guard = _build_workspace_guard(active_settings)
+        if workspace_guard is not None and auto_wire_memory_on_startup:
+            app_instance.state.checkpoint_store = SQLiteCheckpointStore(
+                _resolve_audit_db_path(active_settings), root=workspace_guard.root
+            )
+
         if auto_wire_agent_on_startup:
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
@@ -558,7 +570,8 @@ def create_app(
                 council_service=initial_council_service,
                 council_gate=council_gate,
                 audit_log=startup_audit_log,
-                workspace_guard=_build_workspace_guard(active_settings),
+                workspace_guard=workspace_guard,
+                change_journal=app_instance.state.checkpoint_store,
                 workspace_writable=active_settings.workspace_writable,
                 approval_service=app_instance.state.approval_service,
                 policy_boundary=agent_policy,
@@ -610,6 +623,8 @@ def create_app(
     # Onaylı çağrının geçeceği sınır, ajan yığını kurulduğunda atanır.
     app.state.approval_executor = None
     app.state.audit_log = initial_audit_log
+    # Geri alma kaydı bir çalışma kökü gerektirir; lifespan'de kurulur.
+    app.state.checkpoint_store = None
     app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
@@ -634,6 +649,7 @@ def create_app(
     app.include_router(user_model_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
     app.include_router(approvals_router, prefix="/api")
+    app.include_router(checkpoints_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:
