@@ -43,8 +43,13 @@ from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
+from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
-from app.tools.defaults import build_default_tool_registry, register_context_tools
+from app.tools.defaults import (
+    build_default_tool_registry,
+    register_context_tools,
+    register_filesystem_tools,
+)
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 
@@ -95,6 +100,25 @@ def _resolve_audit_db_path(settings: Settings) -> str:
     şey demek olurdu.
     """
     return settings.audit_db_path or settings.memory_db_path
+
+
+def _build_workspace_guard(settings: Settings) -> PathGuard | None:
+    """Yapılandırılmışsa çalışma kökü bekçisini kurar.
+
+    Ayar boşsa None döner ve dosya araçları hiç kaydedilmez. Yol geçersizse
+    de None döner: bozuk bir ayar yüzünden uygulamayı düşürmek yerine,
+    yeteneği kapalı bırakıp durumu loglamak daha güvenli bir başarısızlıktır.
+    """
+    if not settings.workspace_root:
+        return None
+    try:
+        return PathGuard(settings.workspace_root)
+    except ValueError:
+        logger.warning(
+            "workspace_root_invalid",
+            extra={"event": "workspace_root_invalid", "workspace_root": settings.workspace_root},
+        )
+        return None
 
 
 _AGENT_POLICY = ToolPermissionPolicy.read_only()
@@ -213,6 +237,7 @@ def _build_agent_stack(
     council_service: CouncilService | None = None,
     council_gate: CouncilGate | None = None,
     audit_log: AuditLog | None = None,
+    workspace_guard: PathGuard | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -230,6 +255,9 @@ def _build_agent_stack(
     registered = register_context_tools(
         agent_registry, memory_retrieval=memory_retrieval, user_model=user_model
     )
+    # Dosya araçları YALNIZCA agent registry'sine eklenir; sohbetin LLM'e
+    # sunduğu tool yüzeyi değişmez.
+    registered += register_filesystem_tools(agent_registry, guard=workspace_guard)
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
         policy=_AGENT_POLICY,
@@ -484,6 +512,7 @@ def create_app(
                 council_service=initial_council_service,
                 council_gate=council_gate,
                 audit_log=startup_audit_log,
+                workspace_guard=_build_workspace_guard(active_settings),
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     agent_chat_integration: bool = True
 
     # ------------------------------------------------------------------
+    # Ajanın dosya okuyabileceği çalışma kökü.
+    # BOŞ BIRAKILIRSA dosya araçları hiç kaydedilmez ve ajanın dosya sistemi
+    # yeteneği hiç var olmaz. Varsayılanın kapalı olması bilinçlidir: dosya
+    # erişimi kullanıcının açıkça verdiği bir yetkidir.
+    workspace_root: str = ""
+
     # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
     # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
     # başlatmayı atlatmalıdır.

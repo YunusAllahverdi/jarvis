@@ -2,11 +2,15 @@
 
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
+from app.security.paths import PathGuard
 from app.tools.builtin import (
     CalculatorTool,
     GetDateTool,
     GetTimeTool,
+    GrepTool,
+    ListDirTool,
     MemorySearchTool,
+    ReadFileTool,
     SystemStatusTool,
     UserProfileTool,
 )
@@ -48,3 +52,30 @@ def register_context_tools(
         registry.register(UserProfileTool(user_model=user_model))
         registered.append(UserProfileTool.name)
     return registered
+
+
+def register_filesystem_tools(
+    registry: ToolRegistry,
+    *,
+    guard: PathGuard | None = None,
+) -> list[str]:
+    """Çalışma dizinini okuyan tool'ları kaydeder.
+
+    Bekçi verilmezse HİÇBİRİ kaydedilmez ve ajanın dosya okuma yeteneği hiç
+    var olmaz. Varsayılanın kapalı olması bilinçlidir: dosya erişimi,
+    kullanıcının bir çalışma kökü belirlemesiyle açılmalıdır, uygulamanın
+    kendiliğinden verdiği bir yetki olmamalıdır.
+
+    Üç araç AYNI bekçi örneğini paylaşır; ayrı ayrı kurulsalardı biri
+    sıkılaştırıldığında diğerleri geride kalabilirdi.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if guard is None:
+        return []
+
+    tools = (ReadFileTool(guard=guard), ListDirTool(guard=guard), GrepTool(guard=guard))
+    for tool in tools:
+        registry.register(tool)
+    return [tool.name for tool in tools]
