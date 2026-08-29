@@ -93,8 +93,19 @@ class ToolExecutor:
 
         return self._policy
 
-    async def execute(self, call: ToolCall) -> ToolExecutionResult:
-        """Tool call'u güvenli biçimde çalıştırır veya LLM'e hata sonucu döndürür."""
+    async def execute(self, call: ToolCall, *, approved: bool = False) -> ToolExecutionResult:
+        """Tool call'u güvenli biçimde çalıştırır veya LLM'e hata sonucu döndürür.
+
+        Args:
+            call: Çalıştırılacak araç çağrısı.
+            approved: Bu çağrı için kullanıcı onayı alınmış olduğunu belirtir.
+                Yalnızca `REQUIRE_APPROVAL` kararını geçirir; `DENY` kararını
+                geçirmez. Yani onay, kapalı bir aracı açamaz — sadece zaten
+                onaya tabi olan bir aracı çalıştırılabilir kılar.
+
+                Bu bayrağı LLM çıktısından türetmeyin: yalnızca gerçekten
+                onay kaydı tüketilmiş bir akış True geçmelidir.
+        """
 
         tool = self._registry.get(call.name)
         if tool is None:
@@ -113,7 +124,7 @@ class ToolExecutor:
                 error_code="permission_denied",
                 error_message=f"{tool.permission} izni bu oturumda etkin değil.",
             )
-        if decision is PermissionDecision.REQUIRE_APPROVAL:
+        if decision is PermissionDecision.REQUIRE_APPROVAL and not approved:
             return ToolExecutionResult(
                 tool_name=call.name,
                 success=False,
