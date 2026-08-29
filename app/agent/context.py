@@ -34,6 +34,7 @@ from app.memory.record import MemoryRecord
 from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
+from app.security.permissions import PermissionDecision, ToolPermissionPolicy
 from app.tools.base import PermissionLevel
 from app.tools.registry import ToolRegistry
 
@@ -117,7 +118,8 @@ class ContextBuilder:
         self,
         *,
         tool_registry: ToolRegistry,
-        allowed_permissions: Iterable[PermissionLevel],
+        allowed_permissions: Iterable[PermissionLevel] | None = None,
+        policy: ToolPermissionPolicy | None = None,
         conversation_store: ConversationStore | None = None,
         memory_retrieval: MemoryRetrievalService | None = None,
         experience_store: ExperienceStore | None = None,
@@ -131,7 +133,10 @@ class ContextBuilder:
                 tool yüzeyi LLM'in sohbet sırasında gördüğü yüzeyi değiştirmez.
             allowed_permissions: Bu oturumda onaysız çalıştırılabilecek izin
                 seviyeleri. Bunun dışındaki tool'lar bağlama `requires_confirmation`
-                işaretiyle girer.
+                işaretiyle girer. `policy` ile birlikte verilemez.
+            policy: Tam izin politikası. Verilmezse `allowed_permissions`'tan
+                üretilir; o da yoksa hiçbir aracın serbest olmadığı politika
+                kullanılır.
             conversation_store: Son konuşma mesajlarının kaynağı.
             memory_retrieval: İlgili bellek kayıtlarının kaynağı.
             experience_store: Son deneyimlerin kaynağı.
@@ -139,7 +144,15 @@ class ContextBuilder:
             budget: Kaynak başına üst sınırlar. Verilmezse varsayılan bütçe.
         """
         self._tool_registry = tool_registry
-        self._allowed_permissions = frozenset(allowed_permissions)
+        if policy is not None and allowed_permissions is not None:
+            raise ValueError(
+                "allowed_permissions ve policy birlikte verilemez; birini seçin."
+            )
+        self._policy = (
+            policy
+            if policy is not None
+            else ToolPermissionPolicy(allowed=allowed_permissions or ())
+        )
         self._conversation_store = conversation_store
         self._memory_retrieval = memory_retrieval
         self._experience_store = experience_store
@@ -259,7 +272,9 @@ class ContextBuilder:
                 description=tool.description,
                 permission=tool.permission,
                 input_schema=tool.definition.input_schema,
-                requires_confirmation=tool.permission not in self._allowed_permissions,
+                requires_confirmation=(
+                    self._policy.decide(tool.permission) is not PermissionDecision.ALLOW
+                ),
             )
             for tool in tools
         ]

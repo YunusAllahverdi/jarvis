@@ -39,7 +39,7 @@ from app.services.memory_temporal import MemoryTemporalService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
-from app.tools.base import PermissionLevel
+from app.security.permissions import ToolPermissionPolicy
 from app.tools.defaults import build_default_tool_registry, register_context_tools
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
@@ -82,13 +82,17 @@ def _build_user_model_stack(
     return learning_service, user_model_service
 
 
-_AGENT_ALLOWED_PERMISSIONS = frozenset({PermissionLevel.READ})
-"""Agent'ın onay istemeden çalıştırabileceği izin seviyeleri.
+_AGENT_POLICY = ToolPermissionPolicy.read_only()
+"""Uygulamanın araç izin duruşu — tek beyan noktası.
 
-Bu kümenin dışındaki her tool, bağlama `requires_confirmation=True` ile girer
-ve onay alınmadan ASLA çalıştırılmaz. Bu fazda yalnızca READ tool'ları vardır;
-küme, ileride WRITE/DANGEROUS tool'lar eklendiğinde onay sınırının hazır
-olduğu yerdir.
+Yalnızca READ serbesttir; WRITE ve DANGEROUS reddedilir. Bu fazda o
+seviyelerde tool yoktur, dolayısıyla ret pratikte bir şeyi engellemiyor —
+ama varsayılanı burada açıkça yazmak, ileride bir tool eklendiğinde onun
+sessizce serbest kalmamasını garanti eder.
+
+Onay akışı devreye girdiğinde WRITE bu politikada `requires_approval`
+listesine taşınacak; hem executor hem agent bağlamı aynı örneği kullandığı
+için değişiklik tek yerden yapılır.
 """
 
 
@@ -212,7 +216,7 @@ def _build_agent_stack(
     )
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
-        allowed_permissions=_AGENT_ALLOWED_PERMISSIONS,
+        policy=_AGENT_POLICY,
         conversation_store=conversation_store,
         memory_retrieval=memory_retrieval,
         experience_store=experience_store,
@@ -231,9 +235,7 @@ def _build_agent_stack(
         council_service=council_service,
         council_gate=council_gate,
         runner=AgentRunner(
-            tool_executor=ToolExecutor(
-                agent_registry, allowed_permissions=_AGENT_ALLOWED_PERMISSIONS
-            )
+            tool_executor=ToolExecutor(agent_registry, policy=_AGENT_POLICY)
         ),
     )
 
@@ -363,7 +365,7 @@ def create_app(
         conversation_store=active_conversation_store,
         prompt_loader=SystemPromptLoader(active_settings.system_prompt_file),
         tool_registry=active_tool_registry,
-        tool_executor=ToolExecutor(active_tool_registry, allowed_permissions={PermissionLevel.READ}),
+        tool_executor=ToolExecutor(active_tool_registry, policy=_AGENT_POLICY),
         memory_service=initial_memory_service,
         memory_retrieval=initial_memory_retrieval,
         experience_store=initial_experience_store,
