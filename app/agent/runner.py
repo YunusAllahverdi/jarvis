@@ -48,6 +48,15 @@ class AgentRunner:
         """
         self._tool_executor = tool_executor
 
+    @property
+    def tool_executor(self) -> ToolExecutor:
+        """Eylemlerin geçtiği yürütme sınırı.
+
+        Onay akışı da onaylanmış çağrıyı buradan geçirir: iki ayrı sınır
+        oluşsaydı, biri sıkılaştırıldığında diğeri gevşek kalabilirdi.
+        """
+        return self._tool_executor
+
     async def execute(self, decision: AgentDecision) -> AgentResult:
         """Karardaki eylemleri sırayla yürütür.
 

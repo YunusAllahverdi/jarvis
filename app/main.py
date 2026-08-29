@@ -15,6 +15,7 @@ from app.agent.llm_policy import LLMDecisionPolicy
 from app.agent.policy import DecisionPolicy, RuleBasedDecisionPolicy
 from app.agent.runner import AgentRunner
 from app.api.routes.agent import router as agent_router
+from app.api.routes.approvals import router as approvals_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.api.routes.user_model import router as user_model_router
@@ -39,6 +40,7 @@ from app.services.memory_temporal import MemoryTemporalService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
 from app.services.user_model_service import UserModelService
+from app.security.approvals import ApprovalService
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.defaults import build_default_tool_registry, register_context_tools
 from app.tools.executor import ToolExecutor
@@ -451,6 +453,7 @@ def create_app(
                 council_gate=council_gate,
             )
             app_instance.state.agent_service = startup_agent
+            app_instance.state.approval_executor = startup_agent.tool_executor
             # Sohbet entegrasyonu ayrı bir anahtardır: agent API'si açık
             # kalırken sohbet akışının agent'ı hiç çağırmaması istenebilir.
             if active_settings.agent_chat_integration:
@@ -486,6 +489,12 @@ def create_app(
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
     app.state.tool_registry = active_tool_registry
+    app.state.approval_service = ApprovalService(
+        ttl_seconds=active_settings.approval_ttl_seconds,
+        max_pending=active_settings.approval_max_pending,
+    )
+    # Onaylı çağrının geçeceği sınır, ajan yığını kurulduğunda atanır.
+    app.state.approval_executor = None
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
     app.state.memory_retrieval = initial_memory_retrieval
@@ -508,6 +517,7 @@ def create_app(
     app.include_router(chat_router, prefix="/api")
     app.include_router(user_model_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
+    app.include_router(approvals_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:

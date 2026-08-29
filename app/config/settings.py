@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     agent_chat_integration: bool = True
 
     # ------------------------------------------------------------------
+    # Kullanıcı onayı
+    # Bir onay isteğinin geçerli kalma süresi. Kısa tutulur: onay, belirli
+    # bir andaki duruma verilmiş bir karardır; dakikalar sonra dünya
+    # değişmiş olabilir.
+    approval_ttl_seconds: float = Field(default=300.0, gt=0, le=3600)
+    # Aynı anda bekleyebilecek en fazla onay isteği.
+    approval_max_pending: int = Field(default=50, ge=1, le=500)
+
     # LLM Council
     # ------------------------------------------------------------------
     # VARSAYILAN KAPALI. Council tur başına N+N+1 LLM çağrısı demektir ve

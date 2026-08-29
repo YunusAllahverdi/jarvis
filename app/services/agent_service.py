@@ -25,6 +25,7 @@ from app.agent.models import AgentDecision, AgentResult, AgentStatus, Intent
 from app.agent.policy import DecisionPolicy
 from app.agent.prompts import build_council_source_block
 from app.agent.runner import AgentRunner
+from app.tools.executor import ToolExecutor
 from app.council.gate import CouncilGate
 from app.council.models import CouncilRequest, CouncilResult
 from app.services.council_service import CouncilService
@@ -62,6 +63,12 @@ class AgentService:
         self._runner = runner
         self._council_service = council_service
         self._council_gate = council_gate
+
+    @property
+    def tool_executor(self) -> ToolExecutor:
+        """Ajanın eylemlerinin geçtiği yürütme sınırı."""
+
+        return self._runner.tool_executor
 
     def build_context(self, user_message: str, *, session_id: str | None = None) -> AgentContext:
         """Yalnızca bağlamı kurar (karar vermez, yürütmez).
