@@ -31,6 +31,7 @@ import json
 from collections.abc import Sequence
 
 from app.agent.context import AgentContext
+from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, escape_untrusted, fence
 from app.agent.models import AgentResult, ToolDescriptor
 from app.core.chat import ChatMessage
 
@@ -38,19 +39,11 @@ from app.core.chat import ChatMessage
 # Güvenilmez içerik sınırlama
 # ---------------------------------------------------------------------------
 
-_UNTRUSTED_OPEN = "<untrusted_data>"
-_UNTRUSTED_CLOSE = "</untrusted_data>"
-
-
-def escape_untrusted(text: str) -> str:
-    """Açı parantezlerini nötrleştirir (sahte blok sınırı üretilmesini engeller)."""
-    return text.replace("<", "‹").replace(">", "›")
-
-
-def _fence(label: str, body: str) -> str:
-    """Güvenilmez bir metni etiketli, açıkça sınırlanmış bir bloğa koyar."""
-    return f"{_UNTRUSTED_OPEN} type=\"{label}\"\n{escape_untrusted(body)}\n{_UNTRUSTED_CLOSE}"
-
+# Tanım app.security.fencing'de; burada yalnızca yeniden dışa aktarılır ki
+# mevcut içe aktarmalar bozulmasın.
+_UNTRUSTED_OPEN = UNTRUSTED_OPEN
+_UNTRUSTED_CLOSE = UNTRUSTED_CLOSE
+_fence = fence
 
 # ---------------------------------------------------------------------------
 # Karar prompt'u

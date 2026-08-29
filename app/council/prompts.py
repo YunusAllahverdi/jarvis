@@ -28,18 +28,14 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
+from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, escape_untrusted, fence
 from app.core.chat import ChatMessage
 
-_UNTRUSTED_OPEN = "<untrusted_data>"
-_UNTRUSTED_CLOSE = "</untrusted_data>"
+_UNTRUSTED_OPEN = UNTRUSTED_OPEN
+_UNTRUSTED_CLOSE = UNTRUSTED_CLOSE
 
 TRUNCATION_MARKER = " …[truncated]"
 """Kısaltmanın görünür ve deterministik işareti."""
-
-
-def escape_untrusted(text: str) -> str:
-    """Açı parantezlerini nötrleştirir (sahte blok sınırını engeller)."""
-    return text.replace("<", "‹").replace(">", "›")
 
 
 def truncate(text: str, max_chars: int) -> str:
@@ -54,8 +50,7 @@ def truncate(text: str, max_chars: int) -> str:
     return text[:max_chars] + TRUNCATION_MARKER
 
 
-def _fence(label: str, body: str) -> str:
-    return f'{_UNTRUSTED_OPEN} type="{label}"\n{escape_untrusted(body)}\n{_UNTRUSTED_CLOSE}'
+_fence = fence
 
 
 # ---------------------------------------------------------------------------

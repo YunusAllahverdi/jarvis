@@ -15,6 +15,7 @@ from app.memory.experience_store import ExperienceStore
 from app.memory.record import MemoryRecord
 from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore
+from app.security.fencing import escape_untrusted
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 from app.services.prompts import PromptProvider
@@ -46,16 +47,9 @@ _MEMORY_BLOCK_OPEN = "<relevant_memory>"
 _MEMORY_BLOCK_CLOSE = "</relevant_memory>"
 
 
-def _escape_memory_content(content: str) -> str:
-    """Bellek içeriğindeki `<`/`>` karakterlerini nötrleştirir.
-
-    Saklı bir bellek metninin sahte bir kapanış etiketi (`</relevant_memory>`)
-    üreterek enjekte edilen bloğun sınırını taklit etmesini engeller. İçerik
-    yine de LLM'e okunabilir düz metin olarak görünür; yalnızca gerçek açı
-    parantezi karakterleri görsel olarak benzer, zararsız karakterlerle
-    değiştirilir.
-    """
-    return content.replace("<", "‹").replace(">", "›")
+# Kaçış app.security.fencing'de tanımlıdır; bellek bloğu kendi etiketini
+# kullanır ama aynı nötrleştirmeyi paylaşır.
+_escape_memory_content = escape_untrusted
 
 
 def _format_memory_context(records: Sequence[MemoryRecord]) -> str | None:
