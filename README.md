@@ -1,11 +1,62 @@
 # Jarvis Local
 
-Yerel çalışacak kişisel AI asistanı için modüler FastAPI başlangıç projesi. Step 1 ile yalnızca text tabanlı Ollama LLM akışı eklenmiştir. Ses, görüntü işleme, kalıcı bellek, Home Assistant ve computer control bu projede henüz yoktur.
+Yerel çalışabilen kişisel AI asistanı. Modüler FastAPI backend, React tabanlı bir kabuk ve
+kullanıcı onayına tabi bir ajan katmanı içerir.
+
+Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü bu projede
+**henüz yoktur**.
+
+## Ne var
+
+| Katman | Durum |
+|---|---|
+| Sohbet akışı (Ollama üzerinden) | Çalışıyor |
+| Kalıcı bellek (episodic / semantic / experience, SQLite) | Çalışıyor |
+| Öğrenme ve kullanıcı modeli | Çalışıyor |
+| Ajan karar katmanı (bağlam → politika → runner) | Çalışıyor |
+| LLM Council (çok modelli müzakere) | Çalışıyor, **varsayılan kapalı** |
+| Güvenlik: izin politikası, onay akışı, denetim kaydı | Çalışıyor |
+| Dosya araçları (oku / yaz / ara / proje özeti) | Çalışıyor, **varsayılan kapalı** |
+| Terminal aracı | Çalışıyor, **varsayılan kapalı** |
+| Geri alma (checkpoint / restore) | Çalışıyor |
+| Frontend (WebGL orb kabuğu) | Çalışıyor |
+
+## Güvenlik modeli
+
+Ajanın yetkileri **varsayılan olarak kapalıdır** ve her biri ayrı bir karardır. Bir şeyi
+açmadan ajan onu yapamaz.
+
+**Üç izin seviyesi.** `READ` serbesttir. `WRITE` her zaman kullanıcı onayından geçer.
+`DANGEROUS` yalnızca terminal açıkken onaylanabilir, kapalıyken reddedilir. Karar tek bir
+`ToolPermissionPolicy` örneğinde verilir; hem yürütme sınırı hem ajan bağlamı aynı örneği
+kullanır, dolayısıyla iki yerde ayrışamaz.
+
+**Onay tek kullanımlıktır ve tam olarak gösterilen çağrıya bağlıdır.** Araç adı ve
+argümanlar istek açılırken dondurulur, onay anında istemciden alınmaz. Aynı onay ikinci kez
+kullanılamaz ve süresi dolar. Onay kapalı bir aracı açmaz — yalnızca zaten onaya tabi olanı
+çalıştırılabilir kılar.
+
+**Her çağrı denetim kaydına yazılır** — çalışanlar da, reddedilenler de, onay bekleyenler
+de. Argümanlar maskelenerek kaydedilir.
+
+**Dosya erişimi bir çalışma köküne hapsedilir.** Dizin dışına çıkma, sembolik bağla kaçış ve
+`.env` / özel anahtar gibi hassas dosyalar engellenir. Kapalı dosyalar listede ve aramada hiç
+görünmez.
+
+**Komutlar kabuk olmadan çalışır.** Argüman listesine ayrıştırılıp doğrudan çalıştırılır;
+zincirleme ve yönlendirme engellenen değil, mümkün olmayan şeylerdir. Alt sürece ortam
+değişkenleri devralınmaz.
+
+**Değişiklikler geri alınabilir.** Bir dosya değiştirilmeden önceki hâli kaydedilir. Geri
+alma bir kullanıcı eylemidir (`/api/checkpoints`), ajanın bir aracı değildir.
+
+Araçların ayrıntılı tasarımı için [docs/tools.md](docs/tools.md).
 
 ## Gereksinimler
 
 - Python 3.12 veya üstü
-- `pip`
+- Node.js 20+ (yalnızca frontend için)
+- Ollama (sohbetin çalışması için — aşağıya bakın)
 
 ## Kurulum ve çalıştırma
 
@@ -25,6 +76,16 @@ Uygulama `http://127.0.0.1:8000` adresinde çalışır.
 - Health check: `GET /api/v1/health`
 - OpenAPI arayüzü: `http://127.0.0.1:8000/docs`
 
+### Frontend
+
+```powershell
+npm install --prefix frontend
+npm run dev --prefix frontend
+```
+
+Vite `http://localhost:5173` adresinde açılır ve `/api` isteklerini backend'e proxy'ler.
+Backend kapalıyken kabuk yüklenir ama sohbet bağlantı hatası verir.
+
 ## Test
 
 ```powershell
@@ -33,38 +94,39 @@ pytest
 
 ## Text Brain (Ollama)
 
-Jarvis, `POST /api/chat` isteğini orchestrator üzerinden Ollama'nın `POST /api/chat` API'sine iletir. API katmanı LLM sağlayıcısına doğrudan bağlı değildir; `LLMProvider` arayüzünü uygulayan yeni sağlayıcılar daha sonra eklenebilir.
+Jarvis, `POST /api/chat` isteğini orchestrator üzerinden Ollama'nın `POST /api/chat`
+API'sine iletir. API katmanı LLM sağlayıcısına doğrudan bağlı değildir; `LLMProvider`
+arayüzünü uygulayan yeni sağlayıcılar eklenebilir.
 
 ### Ollama kurulumu ve model indirme
 
-1. Ollama'yı işletim sisteminiz için [resmî Ollama indirme sayfasından](https://ollama.com/download) kurun.
-2. Bir modeli yerelde indirin; örneğin:
+1. Ollama'yı işletim sisteminiz için [resmî indirme sayfasından](https://ollama.com/download) kurun.
+2. Bir modeli indirin, örneğin:
 
    ```powershell
    ollama pull gemma3
    ```
 
-3. Gerekirse yerel sunucuyu başlatın:
+3. Gerekirse sunucuyu başlatın:
 
    ```powershell
    ollama serve
    ```
 
-   `ollama pull`, `ollama run` ve `ollama serve` komutları resmî [Ollama CLI referansında](https://docs.ollama.com/cli) açıklanır.
-
-4. `.env.example` dosyasını `.env` olarak kopyalayın ve indirdiğiniz model adını girin:
+4. `.env.example` dosyasını `.env` olarak kopyalayıp indirdiğiniz model adını girin:
 
    ```dotenv
    JARVIS_OLLAMA_BASE_URL=http://127.0.0.1:11434
    JARVIS_OLLAMA_MODEL=gemma3
-   JARVIS_OLLAMA_TIMEOUT_SECONDS=30
    ```
 
-Model adı kodda sabit değildir. `JARVIS_OLLAMA_MODEL` ayarlanmamışsa uygulama health endpoint'i çalışmaya devam eder, ancak chat endpoint'i açıklayıcı bir `503` döndürür.
+Model adı kodda sabit değildir. `JARVIS_OLLAMA_MODEL` boşsa health endpoint çalışmaya devam
+eder, chat endpoint açıklayıcı bir `503` döndürür.
+
+Tool-calling için Ollama'nın native sözleşmesi kullanılır; bunu destekleyen bir model
+seçmeniz gerekir ([Ollama Tool Calling](https://docs.ollama.com/capabilities/tool-calling)).
 
 ### Chat isteği
-
-Uygulamayı başlattıktan sonra:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/chat" `
@@ -72,52 +134,65 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/chat" `
   -Body '{"message":"Merhaba Jarvis"}'
 ```
 
-İlk yanıtın `session_id` değerini sonraki isteklerde göndererek aynı RAM tabanlı konuşmayı sürdürebilirsiniz:
+Yanıttaki `session_id` sonraki isteklerde gönderilerek aynı konuşma sürdürülür. Konuşma
+dizisi RAM'de tutulur ve yeniden başlatmada silinir; kalıcı bellek ondan ayrıdır ve
+SQLite'ta saklanır.
 
-```json
-{
-  "message": "Önceki mesajımı özetle",
-  "session_id": "ilk-yanittan-gelen-session-id"
-}
+## Ajan yeteneklerini açma
+
+Hepsi `.env` üzerinden ve hepsi varsayılan kapalı:
+
+```dotenv
+# Dosya okuma — bir çalışma kökü tanımlanmadan dosya araçları hiç kaydedilmez
+JARVIS_WORKSPACE_ROOT=C:\yol\proje
+
+# Dosya yazma — okumaktan AYRI bir karar; açık olsa da her yazma onaydan geçer
+JARVIS_WORKSPACE_WRITABLE=true
+
+# Terminal — açıksa DANGEROUS seviyesi onaylanabilir hâle gelir
+JARVIS_TERMINAL_ENABLED=true
+JARVIS_TERMINAL_ALLOWED_COMMANDS=["pytest","ruff"]
 ```
 
-Konuşmalar yalnızca uygulama süreci boyunca RAM'de saklanır; yeniden başlatıldığında silinir.
+### Onay ve geri alma uçları
 
-## Tool System / Action Layer
+- `GET  /api/approvals` — onay bekleyen çağrılar
+- `POST /api/approvals/{id}` — `{"decision": "approve"}` veya `{"decision": "reject"}`
+- `GET  /api/checkpoints` — geri alma noktaları
+- `POST /api/checkpoints/{id}/restore` — dosyayı eski hâline döndürür
 
-`POST /api/chat`, modelin gerek gördüğünde yalnızca kayıtlı bir tool'u çağırmasına izin verir. Akış `LLM → ToolRegistry → Pydantic input validation → permission check → tool result → LLM` şeklindedir. Yanıt formatı değişmez: final cevap ve `session_id` döner.
-
-Bu aşamada kayıtlı tool'ların tamamı salt-okunur `READ` seviyesindedir:
-
-- `get_time`
-- `get_date`
-- `calculator` — `eval()` veya Python çalıştırma kullanmaz.
-- `system_status`
-
-`WRITE` ve `DANGEROUS` permission seviyeleri gelecekteki onay/politika katmanı için mevcuttur; bu step'te etkin değildir. Shell komutu, dosya işlemi, Home Assistant veya computer control tool'u eklenmemiştir. Ayrıntılı tasarım için [tools dokümantasyonuna](docs/tools.md) bakın.
-
-Ollama'nın native `/api/chat` tool-calling sözleşmesi kullanılır. Bunun için tool-calling destekleyen bir model seçmeniz gerekir; örnek akış resmî [Ollama Tool Calling dokümantasyonunda](https://docs.ollama.com/capabilities/tool-calling) yer alır.
+> Bu uçlarda **kimlik doğrulama yoktur**, çünkü uygulamada henüz bir kimlik katmanı yok.
+> Sunucu `127.0.0.1` dışına açılmadan önce eklenmelidir.
 
 ## Yapılandırma
 
-Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasından okunur. Örnekler için `.env.example` dosyasına bakın. `.env` sürüm kontrolüne alınmaz.
+Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasından okunur.
+Örnekler için `.env.example`. `.env` sürüm kontrolüne alınmaz ve ajan tarafından okunamaz.
 
-## Docker hazırlığı
+## Docker
 
-`Dockerfile`, `.dockerignore` ve boş `docker-compose.yml` gelecek aşama için eklendi. Bu aşamada LLM, Home Assistant, veri tabanı veya başka bir servis container'a alınmamıştır.
+`Dockerfile` uygulamayı `0.0.0.0:8000`'de çalıştıracak şekilde hazırdır.
+`docker-compose.yml` henüz boştur. Backend frontend'i sunmaz; geliştirmede Vite ayrı çalışır.
 
 ## Klasör yapısı
 
 ```text
 jarvis/
 ├── app/
-│   ├── api/          # FastAPI endpoint'leri
+│   ├── api/          # FastAPI endpoint'leri (chat, agent, approvals, checkpoints)
+│   ├── agent/        # Karar katmanı: bağlam, politika, runner
+│   ├── council/      # Çok modelli müzakere (varsayılan kapalı)
+│   ├── learning/     # Kullanıcı özellikleri ve çıkarım
+│   ├── memory/       # Episodic / semantic / experience + SQLite depolar
+│   ├── security/     # İzin, onay, denetim, yol bekçisi, komut politikası, checkpoint
+│   ├── services/     # Orchestrator ve servis katmanı
+│   ├── adapters/     # Harici sistem köprüleri (Ollama LLM provider)
 │   ├── config/       # Pydantic Settings
 │   ├── core/         # Ortak altyapı (structured logging)
-│   ├── services/     # İş mantığı için ayrılmış alan
-│   ├── adapters/     # Harici sistem köprüleri (Ollama LLM provider)
-│   ├── tools/        # Asistan araçları için ayrılmış alan
-│   └── memory/       # Bellek sağlayıcıları için ayrılmış alan
+│   ├── prompts/      # Sistem prompt metinleri
+│   └── tools/        # Araçlar: dosya, terminal, git, proje özeti, bağlam
+├── frontend/         # React + Vite kabuk (WebGL orb)
+├── design/           # Claude Design tuval çıktısı (görsel referans)
 ├── tests/
 ├── scripts/
 └── docs/
