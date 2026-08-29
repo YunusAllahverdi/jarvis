@@ -14,6 +14,7 @@ from app.tools.builtin import (
     GitStatusTool,
     GrepTool,
     ListDirTool,
+    ProjectOverviewTool,
     MemorySearchTool,
     ReadFileTool,
     RunCommandTool,
@@ -97,6 +98,9 @@ def register_filesystem_tools(
         # gerekmez.
         GitStatusTool(guard=guard),
         GitDiffTool(guard=guard),
+        # Yapıyı çıkarmak da okumaktır: ajanın değiştirmeden önce
+        # anlaması için gereken ilk bakış.
+        ProjectOverviewTool(guard=guard),
     ]
     if writable:
         tools += [

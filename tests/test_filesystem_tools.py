@@ -375,7 +375,14 @@ def test_write_tools_need_an_explicit_grant(guard: PathGuard) -> None:
 
     registered = register_filesystem_tools(registry, guard=guard)
 
-    assert set(registered) == {"read_file", "list_dir", "grep", "git_status", "git_diff"}
+    assert set(registered) == {
+        "read_file",
+        "list_dir",
+        "grep",
+        "git_status",
+        "git_diff",
+        "project_overview",
+    }
     assert "write_file" not in registered
     assert "edit_file" not in registered
 
