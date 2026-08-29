@@ -166,10 +166,4 @@ class AgentRunner:
                 "agent_action_failed",
                 extra={"tool_name": action.tool_name, "error_code": result.error_code},
             )
-        return ActionOutcome(
-            tool_name=result.tool_name,
-            success=result.success,
-            data=result.data,
-            error_code=result.error_code,
-            error_message=result.error_message,
-        )
+        return ActionOutcome.from_execution(result, arguments)

@@ -243,6 +243,7 @@ def _build_agent_stack(
     audit_log: AuditLog | None = None,
     workspace_guard: PathGuard | None = None,
     workspace_writable: bool = False,
+    approval_service: ApprovalService | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -285,6 +286,7 @@ def _build_agent_stack(
         policy=policy or RuleBasedDecisionPolicy(),
         council_service=council_service,
         council_gate=council_gate,
+        approval_service=approval_service,
         runner=AgentRunner(
             tool_executor=ToolExecutor(
                 agent_registry, policy=_AGENT_POLICY, audit_log=audit_log
@@ -521,6 +523,7 @@ def create_app(
                 audit_log=startup_audit_log,
                 workspace_guard=_build_workspace_guard(active_settings),
                 workspace_writable=active_settings.workspace_writable,
+                approval_service=app_instance.state.approval_service,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

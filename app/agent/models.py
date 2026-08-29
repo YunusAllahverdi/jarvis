@@ -176,6 +176,43 @@ class ActionOutcome(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
 
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    """Eylemin gerçekten çağrıldığı argümanlar (başvurular çözülmüş hâliyle)."""
+
+    permission: str | None = None
+    """Çağrılan aracın risk seviyesi."""
+
+    requires_approval: bool = False
+    """Eylem izinliydi ama kullanıcı onayı beklediği için çalıştırılmadı."""
+
+    approval_id: str | None = None
+    """Onay bekleyen eylem için kullanıcının yanıtlayacağı kaydın kimliği.
+
+    Bu alan olmadan ajan "onay gerekiyor" der ama kullanıcı hangi isteği
+    onaylayacağını bilemezdi. Kaydı açan üst katmandır (AgentService);
+    runner yalnızca durumu bildirir.
+    """
+
+    @classmethod
+    def from_execution(
+        cls, result: Any, arguments: dict[str, Any]
+    ) -> "ActionOutcome":
+        """Bir `ToolExecutionResult`'ı eylem sonucuna çevirir.
+
+        Alan eşlemesi burada durur, runner'da değil: runner'ın işi eylemi
+        yürütme sınırından geçirmektir, sonucun biçimini bilmek değil.
+        """
+        return cls(
+            tool_name=result.tool_name,
+            success=result.success,
+            data=result.data,
+            error_code=result.error_code,
+            error_message=result.error_message,
+            arguments=dict(arguments),
+            permission=str(result.permission) if result.permission else None,
+            requires_approval=result.requires_approval,
+        )
+
 
 class AgentResult(BaseModel):
     """Bir agent çalıştırmasının tam, yapılandırılmış sonucu."""

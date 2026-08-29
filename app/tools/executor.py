@@ -25,6 +25,13 @@ class ToolExecutionResult(BaseModel):
     data: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
+    permission: PermissionLevel | None = None
+    """Çağrılan aracın risk seviyesi; araç bulunamadıysa None.
+
+    Sonuçla birlikte taşınır ki üst katmanlar bunu öğrenmek için registry'ye
+    uzanmak zorunda kalmasın.
+    """
+
     requires_approval: bool = False
     """Araç izinliydi ama önce kullanıcı onayı gerekiyor.
 
@@ -261,6 +268,7 @@ class ToolExecutor:
         Her çıkış yolu buradan geçer; yeni bir dal eklendiğinde kaydın
         atlanması için ayrıca bir şey yapılması gerekir.
         """
+        result.permission = permission
         safe_record(
             self._audit_log,
             AuditEvent(

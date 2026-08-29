@@ -25,6 +25,9 @@ from app.agent.models import AgentDecision, AgentResult, AgentStatus, Intent
 from app.agent.policy import DecisionPolicy
 from app.agent.prompts import build_council_source_block
 from app.agent.runner import AgentRunner
+from app.core.chat import ToolCall
+from app.security.approvals import ApprovalService
+from app.tools.base import PermissionLevel
 from app.tools.executor import ToolExecutor
 from app.council.gate import CouncilGate
 from app.council.models import CouncilRequest, CouncilResult
@@ -46,6 +49,7 @@ class AgentService:
         runner: AgentRunner,
         council_service: CouncilService | None = None,
         council_gate: CouncilGate | None = None,
+        approval_service: ApprovalService | None = None,
     ) -> None:
         """
         Args:
@@ -54,6 +58,9 @@ class AgentService:
             runner: Kararı ToolExecutor üzerinden yürüten bileşen.
             council_service: Çok modelli müzakere servisi. None ise Council
                 hiç çalışmaz ve `AgentResult.council` her zaman None kalır.
+            approval_service: Onay bekleyen eylemler için kayıt açan servis.
+                Verilmezse ajan yine durur, ama kullanıcı yanıtlayacak bir
+                istek göremez.
             council_gate: Council'ın ne zaman çalışacağına karar veren
                 DETERMİNİSTİK kapı. Servis verilip kapı verilmezse Council
                 yine çalışmaz — kapısız bir Council her mesajda çalışırdı.
@@ -63,6 +70,7 @@ class AgentService:
         self._runner = runner
         self._council_service = council_service
         self._council_gate = council_gate
+        self._approval_service = approval_service
 
     @property
     def tool_executor(self) -> ToolExecutor:
@@ -115,8 +123,39 @@ class AgentService:
             )
             return AgentResult(decision=decision, outcomes=[], status=AgentStatus.FAILED)
 
+        self._open_pending_approvals(result, session_id)
         result.council = await self._run_council_safely(context, decision, result)
         return result
+
+    def _open_pending_approvals(self, result: AgentResult, session_id: str | None) -> None:
+        """Onay bekleyen her eylem için bir kayıt açar ve kimliğini işler.
+
+        Kaydı runner değil bu katman açar: runner'ın işi eylemi yürütme
+        sınırından geçirmektir, dış dünyayla koordinasyon değil.
+
+        Kayıt açılamazsa eylem yine çalıştırılmamış kalır ve hata yalnızca
+        loglanır. Onay altyapısındaki bir aksaklık, engellenmiş bir yazmanın
+        aniden gerçekleşmesine yol açmamalıdır.
+        """
+        if self._approval_service is None:
+            return
+        for outcome in result.outcomes:
+            if not outcome.requires_approval or outcome.approval_id:
+                continue
+            try:
+                record = self._approval_service.request(
+                    ToolCall(name=outcome.tool_name, arguments=outcome.arguments),
+                    permission=PermissionLevel(outcome.permission),
+                    session_id=session_id,
+                    reason=outcome.error_message,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "agent_approval_request_failed",
+                    extra={"tool_name": outcome.tool_name},
+                )
+                continue
+            outcome.approval_id = record.approval_id
 
     # ------------------------------------------------------------------
     # Council
