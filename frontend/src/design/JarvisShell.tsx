@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AdminPanel } from './AdminPanel';
 import { OrbEngine, type OrbMode } from './orb/OrbEngine';
 import { apiClient } from '../api/client';
 import {
@@ -40,6 +41,7 @@ export const JarvisShell = () => {
   const [theme, setTheme] = useState<ThemeName>('Gezegen');
   const [nav, setNav] = useState('Sohbet');
   const [micOn, setMicOn] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -173,11 +175,18 @@ export const JarvisShell = () => {
               <div key={i} style={{ width: 2, height: h, background: h === 16 ? '#c9d3ff' : '#8fa2ff' }} />
             ))}
           </div>
-          <div style={{ width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#aab4e8' }}>
+          <button
+            onClick={() => setAdminOpen(true)}
+            aria-label="Sağlayıcı ayarları"
+            style={{
+              width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
+              cursor: 'pointer', color: '#aab4e8', background: 'transparent', border: 'none',
+            }}
+          >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
               <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8.4" />
             </svg>
-          </div>
+          </button>
         </div>
 
         {/* ── sol: arama + gezinme ── */}
@@ -443,6 +452,8 @@ export const JarvisShell = () => {
             ))}
           </div>
         </div>
+
+        {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       </div>
     </div>
   );

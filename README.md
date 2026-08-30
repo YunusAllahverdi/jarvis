@@ -20,6 +20,7 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Terminal aracı | Çalışıyor, **varsayılan kapalı** |
 | Geri alma (checkpoint / restore) | Çalışıyor |
 | Frontend (WebGL orb kabuğu) | Çalışıyor |
+| Sağlayıcı yönetim paneli (çalışma zamanında değiştirilebilir) | Çalışıyor |
 
 ## Güvenlik modeli
 
@@ -138,6 +139,31 @@ Yanıttaki `session_id` sonraki isteklerde gönderilerek aynı konuşma sürdür
 dizisi RAM'de tutulur ve yeniden başlatmada silinir; kalıcı bellek ondan ayrıdır ve
 SQLite'ta saklanır.
 
+## Sağlayıcı seçimi
+
+Kabuktaki dişli ikonundan açılan panelden sağlayıcı çalışma zamanında
+değiştirilebilir — yeniden başlatma gerekmez. İki tür desteklenir:
+
+- **Ollama (yerel)** — anahtar gerektirmez.
+- **OpenAI uyumlu** — `/chat/completions` sözleşmesini konuşan her servis:
+  Gemini (AI Studio), Groq, OpenRouter, LM Studio ve benzerleri. Adres, model
+  ve API anahtarı panelden girilir.
+
+Anahtar sunucuda saklanır ve **panele geri dönmez**; yalnızca tanımlı olup
+olmadığı gösterilir. Boş bırakılarak kaydedilirse mevcut anahtar korunur,
+silmek için ayrı bir düğme vardır.
+
+> **Yönetim uçları hakkında:** Bu uçlar bir API anahtarı kabul ediyor ve LLM
+> adresini değiştirebiliyor. Uygulamada henüz kimlik katmanı olmadığı için
+> şu kural uygulanır: sunucu `127.0.0.1` dışına bağlıysa ve
+> `JARVIS_ADMIN_TOKEN` tanımlanmamışsa yönetim uçları çalışmaz. Anahtar
+> tanımlıysa her istekte `X-Admin-Token` başlığı istenir.
+
+```dotenv
+# Sunucuyu dışarı açacaksan zorunlu
+JARVIS_ADMIN_TOKEN=uzun-ve-rastgele-bir-deger
+```
+
 ## Ajan yeteneklerini açma
 
 Hepsi `.env` üzerinden ve hepsi varsayılan kapalı:
@@ -160,6 +186,8 @@ JARVIS_TERMINAL_ALLOWED_COMMANDS=["pytest","ruff"]
 - `POST /api/approvals/{id}` — `{"decision": "approve"}` veya `{"decision": "reject"}`
 - `GET  /api/checkpoints` — geri alma noktaları
 - `POST /api/checkpoints/{id}/restore` — dosyayı eski hâline döndürür
+- `GET  /api/admin/llm` — sağlayıcı yapılandırması (anahtar hariç)
+- `PUT  /api/admin/llm` — sağlayıcıyı değiştirir ve hemen devreye alır
 
 > Bu uçlarda **kimlik doğrulama yoktur**, çünkü uygulamada henüz bir kimlik katmanı yok.
 > Sunucu `127.0.0.1` dışına açılmadan önce eklenmelidir.

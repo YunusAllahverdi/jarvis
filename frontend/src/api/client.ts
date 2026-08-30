@@ -50,6 +50,28 @@ async function errorMessage(response: Response): Promise<string> {
   return `Sunucu ${response.status} döndü.`;
 }
 
+
+export type LLMProviderKind = 'ollama' | 'openai_compatible';
+
+export interface LLMConfig {
+  kind: LLMProviderKind;
+  base_url: string;
+  model: string | null;
+  timeout_seconds: number;
+  /** Anahtarın kendisi hiç gelmez; yalnızca tanımlı olup olmadığı. */
+  has_api_key: boolean;
+}
+
+export interface LLMConfigUpdate {
+  kind: LLMProviderKind;
+  base_url: string;
+  model: string | null;
+  timeout_seconds?: number;
+  /** Boş bırakılırsa sunucudaki mevcut anahtar korunur. */
+  api_key?: string;
+  clear_api_key?: boolean;
+}
+
 export const apiClient = {
   /** Bir mesajı Jarvis'e gönderir ve cevabı döndürür. */
   async chat(message: string, sessionId?: string | null): Promise<ChatResponse> {
@@ -76,5 +98,23 @@ export const apiClient = {
     const response = await fetch(`${API_BASE}/v1/health`);
     if (!response.ok) throw new Error(await errorMessage(response));
     return response.json() as Promise<HealthResponse>;
+  },
+
+  /** Geçerli sağlayıcı yapılandırmasını okur (anahtar hariç). */
+  async getLlmConfig(): Promise<LLMConfig> {
+    const response = await fetch(`${API_BASE}/admin/llm`);
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.json() as Promise<LLMConfig>;
+  },
+
+  /** Sağlayıcıyı değiştirir; sunucuda hemen devreye girer. */
+  async updateLlmConfig(update: LLMConfigUpdate): Promise<LLMConfig> {
+    const response = await fetch(`${API_BASE}/admin/llm`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.json() as Promise<LLMConfig>;
   },
 };
