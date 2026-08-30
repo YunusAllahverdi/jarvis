@@ -17,6 +17,7 @@ from app.agent.policy import DecisionPolicy, RuleBasedDecisionPolicy
 from app.agent.runner import AgentRunner
 from app.api.routes.agent import router as agent_router
 from app.api.routes.approvals import router as approvals_router
+from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.health import router as health_router
@@ -34,6 +35,7 @@ from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.services.agent_service import AgentService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
+from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.council_service import CouncilService
 from app.services.learning_service import LearningService
 from app.services.memory_retrieval import MemoryRetrievalService
@@ -363,11 +365,14 @@ def create_app(
     # gibi çalışmaya devam eder; bellek istenen testler memory_service'i
     # açıkça enjekte eder.
     using_default_provider = provider is None
-    active_provider = provider if provider is not None else OllamaProvider(
+    # Varsayılan sağlayıcı değiştirilebilir bir sarmalayıcıya alınır: sohbet,
+    # bellek çıkarımı ve ajan hep AYNI nesneyi tutar, dolayısıyla yönetim
+    # panelinden yapılan değişiklik hepsinde birden geçerli olur.
+    active_provider = provider if provider is not None else SwitchableProvider(OllamaProvider(
         base_url=active_settings.ollama_base_url,
         model=active_settings.ollama_model,
         timeout_seconds=active_settings.ollama_timeout_seconds,
-    )
+    ))
     active_conversation_store = (
         conversation_store if conversation_store is not None else InMemoryConversationStore()
     )
@@ -538,6 +543,17 @@ def create_app(
             app_instance.state.learning_service = startup_learning
             app_instance.state.user_model_service = startup_user_model
 
+        if using_default_provider and auto_wire_memory_on_startup:
+            # Yapılandırma deposu diğer kalıcı depolarla aynı dosyayı
+            # paylaşır ve yalnızca veritabanına zaten dokunulan kurulumlarda
+            # açılır.
+            startup_llm_config = LLMConfigStore(
+                _resolve_audit_db_path(active_settings)
+            )
+            app_instance.state.llm_config_store = startup_llm_config
+            if startup_llm_config.get() != startup_llm_config._default:
+                await active_provider.switch(startup_llm_config.build_provider())
+
         # Kalıcı denetim kaydı yalnızca veritabanına zaten dokunulan
         # kurulumlarda açılır. Sağlayıcı enjekte edildiğinde hiçbir dosya
         # oluşturulmaz; o durumda kayıt bellekte kalır.
@@ -625,6 +641,8 @@ def create_app(
     app.state.audit_log = initial_audit_log
     # Geri alma kaydı bir çalışma kökü gerektirir; lifespan'de kurulur.
     app.state.checkpoint_store = None
+    app.state.llm_config_store = None
+    app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
     app.state.memory_service = initial_memory_service
@@ -650,6 +668,7 @@ def create_app(
     app.include_router(agent_router, prefix="/api")
     app.include_router(approvals_router, prefix="/api")
     app.include_router(checkpoints_router, prefix="/api")
+    app.include_router(admin_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
     async def root() -> ServiceInfo:

@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     # Tek bir komutun çalışabileceği en uzun süre.
     terminal_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
 
+    # Yönetim uçları için anahtar. Boşsa yönetim uçları YALNIZCA sunucu
+    # yerel adrese bağlıyken çalışır; dışarı açıldığında anahtar zorunlu olur.
+    admin_token: str = ""
+
     # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
     # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
     # başlatmayı atlatmalıdır.
