@@ -202,6 +202,11 @@ Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasınd
 `Dockerfile` uygulamayı `0.0.0.0:8000`'de çalıştıracak şekilde hazırdır.
 `docker-compose.yml` henüz boştur. Backend frontend'i sunmaz; geliştirmede Vite ayrı çalışır.
 
+## Lisans
+
+MIT — bkz. [LICENSE](LICENSE). Kullanabilir, değiştirebilir ve dağıtabilirsiniz;
+tek koşul telif notunun korunması. Yazılım garanti verilmeden sunulur.
+
 ## Klasör yapısı
 
 ```text
