@@ -119,6 +119,18 @@ class ToolExecutor:
 
         return self._policy
 
+    @property
+    def registry(self) -> ToolRegistry:
+        """Bu sınırdan çalıştırılabilecek araçların kaydı.
+
+        Üst katmanların "hangi araçlar var?" sorusunu, ikinci bir registry
+        örneği kurmadan yanıtlayabilmesi için açılır. İkinci bir örnek,
+        yürütme sınırıyla ayrışabilecek bir araç yüzeyi demek olurdu:
+        planlayan taraf, çalıştıran tarafta olmayan bir aracı görebilirdi.
+        """
+
+        return self._registry
+
     async def execute(
         self,
         call: ToolCall,

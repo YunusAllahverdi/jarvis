@@ -20,8 +20,12 @@ from app.api.routes.approvals import router as approvals_router
 from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
+from app.api.routes.coding import router as coding_router
 from app.api.routes.health import router as health_router
 from app.api.routes.user_model import router as user_model_router
+from app.coding.loop import CodingLoop
+from app.coding.planner import CodingPlanner
+from app.coding.verification import Verifier
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
 from app.council.gate import CouncilGate
@@ -34,6 +38,7 @@ from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.services.agent_service import AgentService
+from app.services.coding_service import CodingService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.council_service import CouncilService
@@ -47,7 +52,7 @@ from app.services.user_model_service import UserModelService
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.checkpoints import SQLiteCheckpointStore
-from app.security.commands import CommandPolicy
+from app.security.commands import CommandNotAllowedError, CommandPolicy
 from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.base import PermissionLevel
@@ -166,6 +171,109 @@ Onay akışı devreye girdiğinde WRITE bu politikada `requires_approval`
 listesine taşınacak; hem executor hem agent bağlamı aynı örneği kullandığı
 için değişiklik tek yerden yapılır.
 """
+
+
+_DEFAULT_VERIFICATION_COMMANDS: tuple[str, ...] = (
+    "pytest -q",
+    "python -m pytest -q",
+    "npm test",
+)
+"""Doğrulama komutu adaylarının varsayılan kümesi.
+
+Kısa ve tanıdıktır: ajanın kendi değişikliğini doğrulaması için gereken en
+yaygın komutlar. Kullanılmadan önce komut politikasının tanıdıklarıyla
+KESİŞTİRİLİR — politikanın çalıştırmayacağı bir komutu modele önermek,
+kesin başarısız olacak bir tur harcatmak olurdu.
+"""
+
+
+def _resolve_verification_commands(
+    settings: Settings, command_policy: CommandPolicy
+) -> tuple[str, ...]:
+    """Görev modelinin seçebileceği doğrulama komutlarını belirler.
+
+    Kullanıcı açıkça bir liste verdiyse o kullanılır; vermediyse varsayılan
+    küme kullanılır. Her iki durumda da politika süzgeci uygulanır: model
+    yalnızca gerçekten çalıştırılabilecek bir komut seçebilir.
+    """
+    candidates = settings.coding_verification_commands or list(_DEFAULT_VERIFICATION_COMMANDS)
+    allowed: list[str] = []
+    for command in candidates:
+        normalized = command.strip()
+        if not normalized:
+            continue
+        try:
+            command_policy.parse(normalized)
+        except CommandNotAllowedError:
+            logger.debug(
+                "coding_verification_command_filtered",
+                extra={"command": normalized[:120]},
+            )
+            continue
+        if normalized not in allowed:
+            allowed.append(normalized)
+    return tuple(allowed)
+
+
+def _build_coding_service(
+    settings: Settings,
+    *,
+    agent: AgentService,
+    provider: LLMProvider,
+    command_policy: CommandPolicy,
+    approval_service: ApprovalService | None,
+) -> CodingService | None:
+    """Kodlama döngüsünü kurar; şartlar sağlanmıyorsa None döner.
+
+    DÖRT ŞART BİRDEN gerekir ve hiçbiri diğerinin yerine geçmez:
+    açık bir etkinleştirme, bir çalışma kökü, yazma yetkisi ve terminal.
+    Döngü, ajanın dosya değiştirip komut çalıştırdığı en yetkili yoldur;
+    tek bir anahtarla açılmaması bilinçlidir. Şartlardan biri eksikse
+    servis hiç var olmaz — kayıtlı ama çalışmayan bir uç, kullanıcıya
+    sahip olmadığı bir yeteneği varmış gibi gösterirdi.
+
+    AJANIN YÜRÜTME SINIRI YENİDEN KULLANILIR: ikinci bir `ToolExecutor`
+    kurulsaydı, izin politikası veya denetim kaydı ikisinde ayrışabilirdi.
+    Araç kaydı da o sınırdan okunur, böylece planlanabilen ile
+    çalıştırılabilen küme aynı kalır.
+    """
+    if not settings.coding_loop_enabled:
+        return None
+    if not (settings.workspace_root and settings.workspace_writable and settings.terminal_enabled):
+        logger.info(
+            "coding_loop_not_built",
+            extra={
+                "has_workspace": bool(settings.workspace_root),
+                "writable": settings.workspace_writable,
+                "terminal_enabled": settings.terminal_enabled,
+            },
+        )
+        return None
+
+    executor = agent.tool_executor
+    commands = _resolve_verification_commands(settings, command_policy)
+    if not commands:
+        logger.warning("coding_loop_no_verification_commands")
+
+    loop = CodingLoop(
+        planner=CodingPlanner(provider=provider, model_label=settings.ollama_model),
+        verifier=Verifier(
+            tool_executor=executor,
+            timeout_seconds=settings.coding_verification_timeout_seconds,
+        ),
+        tool_executor=executor,
+        approval_service=approval_service,
+        verification_candidates=commands,
+        max_iterations=settings.coding_max_iterations,
+    )
+    logger.info(
+        "coding_loop_built",
+        extra={
+            "max_iterations": settings.coding_max_iterations,
+            "verification_command_count": len(commands),
+        },
+    )
+    return CodingService(loop=loop)
 
 
 def _build_decision_policy(
@@ -569,6 +677,8 @@ def create_app(
                 _resolve_audit_db_path(active_settings), root=workspace_guard.root
             )
 
+        command_policy = _build_command_policy(active_settings)
+
         if auto_wire_agent_on_startup:
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
@@ -592,7 +702,7 @@ def create_app(
                 approval_service=app_instance.state.approval_service,
                 policy_boundary=agent_policy,
                 terminal_enabled=active_settings.terminal_enabled,
-                command_policy=_build_command_policy(active_settings),
+                command_policy=command_policy,
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
             )
             app_instance.state.agent_service = startup_agent
@@ -601,6 +711,18 @@ def create_app(
             # kalırken sohbet akışının agent'ı hiç çağırmaması istenebilir.
             if active_settings.agent_chat_integration:
                 chat_orchestrator.set_agent_service(startup_agent)
+
+            # Kodlama döngüsü ajandan SONRA kurulur: ajanın yürütme sınırını
+            # ve araç kaydını yeniden kullanır, dolayısıyla ajan olmadan
+            # kurulamaz. Sohbet akışına BAĞLANMAZ — döngüdeki bir sorun
+            # normal sohbeti hiçbir koşulda etkileyemez.
+            app_instance.state.coding_service = _build_coding_service(
+                active_settings,
+                agent=startup_agent,
+                provider=active_provider,
+                command_policy=command_policy,
+                approval_service=app_instance.state.approval_service,
+            )
 
         logger.info(
             "application_started",
@@ -659,6 +781,9 @@ def create_app(
     # Agent: auto_wire_agent_on_startup ise lifespan başlayana kadar None kalır.
     # API uçları None durumunda 503 döner.
     app.state.agent_service = initial_agent_service
+    # Kodlama döngüsü ajanın yığınına bağlı olduğundan yalnızca lifespan'de
+    # kurulabilir; o ana kadar None kalır ve uç 503 döner.
+    app.state.coding_service = None
     app.state.council_service = initial_council_service
     app.state.council_gate = council_gate
     app.state.council_providers = council_providers
@@ -668,6 +793,7 @@ def create_app(
     app.include_router(agent_router, prefix="/api")
     app.include_router(approvals_router, prefix="/api")
     app.include_router(checkpoints_router, prefix="/api")
+    app.include_router(coding_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])

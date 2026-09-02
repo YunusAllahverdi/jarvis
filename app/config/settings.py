@@ -85,6 +85,29 @@ class Settings(BaseSettings):
     # Tek bir komutun çalışabileceği en uzun süre.
     terminal_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
 
+    # Kodlama döngüsü
+    # ------------------------------------------------------------------
+    # VARSAYILAN KAPALI ve ayrıca bir çalışma kökü, yazma yetkisi ve terminal
+    # gerektirir. Dört ayrı karar olması bilinçlidir: döngü, ajanın dosya
+    # değiştirip komut çalıştırdığı en yetkili yoldur ve tek bir anahtarla
+    # açılmamalıdır. Kapalıyken sistemin davranışı döngü eklenmeden önceki
+    # hâliyle aynıdır.
+    coding_loop_enabled: bool = False
+
+    # Doğrulama başarısız olduğunda denenecek maksimum düzeltme turu.
+    coding_max_iterations: int = Field(default=3, ge=1, le=10)
+
+    # Doğrulama komutunun çalışabileceği en uzun süre. Terminal sınırından
+    # AYRI tutulur: bir test paketi, tek bir incelemeden uzun sürer.
+    coding_verification_timeout_seconds: float = Field(default=180.0, gt=0, le=600)
+
+    # Görev modelinin seçebileceği doğrulama komutları. Model bu listenin
+    # DIŞINA ÇIKAMAZ: uydurulmuş bir komut, komut politikasında zaten
+    # reddedilirdi ama o noktada bir tur harcanmış olurdu.
+    # Boş bırakılırsa yaygın test komutlarından oluşan varsayılan küme,
+    # komut politikasının tanıdıklarıyla kesiştirilerek kullanılır.
+    coding_verification_commands: list[str] = Field(default_factory=list)
+
     # Yönetim uçları için anahtar. Boşsa yönetim uçları YALNIZCA sunucu
     # yerel adrese bağlıyken çalışır; dışarı açıldığında anahtar zorunlu olur.
     admin_token: str = ""

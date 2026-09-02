@@ -49,7 +49,7 @@ from app.agent.context import AgentContext
 from app.agent.models import AgentAction, AgentDecision, Intent
 from app.agent.policy import DecisionPolicy
 from app.agent.prompts import build_decision_messages
-from app.agent.references import is_reference
+from app.agent.validation import arguments_match_schema, references_point_backwards
 
 logger = logging.getLogger(__name__)
 
@@ -341,41 +341,9 @@ def _parse_intent(raw: str) -> Intent | None:
         return None
 
 
-def _arguments_match_schema(arguments: dict[str, Any], schema: dict[str, Any]) -> bool:
-    """Argüman anahtarlarının şemada tanımlı olup olmadığını denetler.
-
-    Bu TAM bir JSON Schema doğrulaması DEĞİLDİR ve öyle olduğu iddia edilmez:
-    tip ve zorunluluk denetimi, tool'un pydantic input modeliyle
-    `ToolExecutor` içinde yapılır ve o sınır atlanamaz. Buradaki denetim,
-    modellerin en sık yaptığı hatayı (uydurulmuş argüman adı) karar anında
-    yakalar — tüm tool input modelleri `extra="forbid"` olduğundan bu
-    denetim şemayla tutarlıdır.
-
-    Şema özellik tanımı içermiyorsa denetim atlanır (yanlış pozitif üretmemek
-    için muhafazakâr davranılır).
-    """
-    properties = schema.get("properties")
-    if not isinstance(properties, dict):
-        return True
-    return all(key in properties for key in arguments)
-
-
-def _references_point_backwards(value: Any, action_index: int) -> bool:
-    """Argümanlardaki adım başvurularının yalnızca geriye baktığını doğrular.
-
-    İleriye veya kendine yapılan başvuru, yürütme sırasında zaten
-    reddedilirdi; burada karar anında yakalanır, böylece hiç yürütülmez.
-    """
-    if is_reference(value):
-        spec = value["$from"]
-        if not isinstance(spec, dict):
-            return False
-        step = spec.get("step")
-        if not isinstance(step, int) or isinstance(step, bool):
-            return False
-        return 0 <= step < action_index
-    if isinstance(value, dict):
-        return all(_references_point_backwards(item, action_index) for item in value.values())
-    if isinstance(value, list):
-        return all(_references_point_backwards(item, action_index) for item in value)
-    return True
+# Doğrulama yardımcıları `app.agent.validation`'da tek kez tanımlıdır; burada
+# yalnızca yerel adlarla kullanılır. Aynı denetim kodlama planlayıcısında da
+# gerekiyor ve iki kopya bırakılsaydı biri sıkılaştırıldığında diğeri sessizce
+# zayıf kalırdı.
+_arguments_match_schema = arguments_match_schema
+_references_point_backwards = references_point_backwards

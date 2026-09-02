@@ -14,6 +14,7 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Kalıcı bellek (episodic / semantic / experience, SQLite) | Çalışıyor |
 | Öğrenme ve kullanıcı modeli | Çalışıyor |
 | Ajan karar katmanı (bağlam → politika → runner) | Çalışıyor |
+| Kodlama döngüsü (planla → uygula → doğrula → düzelt) | Çalışıyor, **varsayılan kapalı** |
 | LLM Council (çok modelli müzakere) | Çalışıyor, **varsayılan kapalı** |
 | Güvenlik: izin politikası, onay akışı, denetim kaydı | Çalışıyor |
 | Dosya araçları (oku / yaz / ara / proje özeti) | Çalışıyor, **varsayılan kapalı** |
@@ -180,6 +181,44 @@ JARVIS_TERMINAL_ENABLED=true
 JARVIS_TERMINAL_ALLOWED_COMMANDS=["pytest","ruff"]
 ```
 
+## Kodlama döngüsü
+
+Ajan tek bir plan üretip durmak yerine, sonucunu **doğrular**: değişikliği uygular,
+test komutunu çalıştırır, hatayı okur ve sınırlı sayıda düzeltme turu dener.
+
+```text
+anla → planla → uygula → doğrula → teşhis et → düzelt → (tur sınırına kadar)
+```
+
+Açılması **dört ayrı karar** gerektirir; hiçbiri diğerinin yerine geçmez:
+
+```dotenv
+JARVIS_CODING_LOOP_ENABLED=true
+JARVIS_WORKSPACE_ROOT=C:\yol\proje
+JARVIS_WORKSPACE_WRITABLE=true
+JARVIS_TERMINAL_ENABLED=true
+
+# İsteğe bağlı ince ayar
+JARVIS_CODING_MAX_ITERATIONS=3
+JARVIS_CODING_VERIFICATION_TIMEOUT_SECONDS=180
+JARVIS_CODING_VERIFICATION_COMMANDS=["pytest -q"]
+```
+
+- `POST /api/coding/run` — `{"message": "...", "session_id": "..."}`
+
+Yanıt; görevi, her turun adımlarını, doğrulama sonucunu, `git diff`'i ve yapılan işin
+**deterministik** açıklamasını içerir. Birkaç davranış bilinçlidir:
+
+- **Döngü kendini başarılı ilan edemez.** `completed` yalnızca gerçek bir doğrulama
+  komutunun sıfır çıkış koduyla verilir; doğrulama çalışmadıysa sonuç
+  `applied_unverified` olur, `completed` değil.
+- **Onayda durur.** Onay gerektiren bir adıma gelindiğinde o adım ve sonrası
+  çalıştırılmaz; onay kaydı, başvuruları çözülmüş argümanlarla açılır ve kimlikleri
+  `pending_approval_ids` içinde döner.
+- **Doğrulama komutunu model uyduramaz.** Yalnızca yapılandırılmış adaylar arasından
+  seçebilir ve o liste de komut politikasının tanıdıklarıyla süzülür.
+- Döngü sohbet akışına bağlı değildir; buradaki bir sorun normal sohbeti etkilemez.
+
 ### Onay ve geri alma uçları
 
 - `GET  /api/approvals` — onay bekleyen çağrılar
@@ -212,8 +251,9 @@ tek koşul telif notunun korunması. Yazılım garanti verilmeden sunulur.
 ```text
 jarvis/
 ├── app/
-│   ├── api/          # FastAPI endpoint'leri (chat, agent, approvals, checkpoints)
+│   ├── api/          # FastAPI endpoint'leri (chat, agent, coding, approvals, checkpoints)
 │   ├── agent/        # Karar katmanı: bağlam, politika, runner
+│   ├── coding/       # Kodlama döngüsü: planla, uygula, doğrula, teşhis et, düzelt
 │   ├── council/      # Çok modelli müzakere (varsayılan kapalı)
 │   ├── learning/     # Kullanıcı özellikleri ve çıkarım
 │   ├── memory/       # Episodic / semantic / experience + SQLite depolar
