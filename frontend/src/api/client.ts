@@ -72,6 +72,50 @@ export interface LLMConfigUpdate {
   clear_api_key?: boolean;
 }
 
+export interface ActionOutcome {
+  tool_name: string;
+  success: boolean;
+  skipped: boolean;
+  error_code: string | null;
+  error_message: string | null;
+  arguments: Record<string, unknown>;
+  requires_approval: boolean;
+}
+
+export interface CodingIteration {
+  index: number;
+  outcomes: ActionOutcome[];
+  verification: {
+    ran: boolean;
+    passed: boolean;
+    command: string | null;
+    exit_code: number | null;
+    timed_out: boolean;
+    skipped_reason: string | null;
+    diagnosis: { category: string; summary: string; failing_tests: string[] } | null;
+  } | null;
+}
+
+export type CodingStatus =
+  | 'completed'
+  | 'applied_unverified'
+  | 'verification_failed'
+  | 'pending_approval'
+  | 'no_plan'
+  | 'failed';
+
+export interface CodingResult {
+  request: string;
+  session_id: string | null;
+  status: CodingStatus;
+  task: { goal: string; verification_command: string | null } | null;
+  iterations: CodingIteration[];
+  summary: string;
+  diff: string | null;
+  pending_approval_ids: string[];
+  error: string | null;
+}
+
 export const apiClient = {
   /** Bir mesajı Jarvis'e gönderir ve cevabı döndürür. */
   async chat(message: string, sessionId?: string | null): Promise<ChatResponse> {
@@ -116,5 +160,27 @@ export const apiClient = {
     });
     if (!response.ok) throw new Error(await errorMessage(response));
     return response.json() as Promise<LLMConfig>;
+  },
+
+  /**
+   * Kodlama döngüsünü çalıştırır: anla → planla → uygula → doğrula → düzelt.
+   *
+   * Uç bağlı değilse (döngü ayarlardan açılmamışsa) 503 döner; bu durum
+   * normal bir hata gibi fırlatılır, panel bunu kullanıcıya açıklar.
+   */
+  async runCoding(message: string, sessionId?: string | null): Promise<CodingResult> {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/coding/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, session_id: sessionId || null }),
+      });
+    } catch {
+      throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
+    }
+
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.json() as Promise<CodingResult>;
   },
 };

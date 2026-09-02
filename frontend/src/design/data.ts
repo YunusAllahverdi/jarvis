@@ -38,7 +38,8 @@ export const NAV: NavItem[] = [
   { label: 'Öğrendiklerim', path: 'M12 3.6l7.2 8.4L12 20.4 4.8 12z' },
   { label: 'Benim Modelim', path: 'M12 4.2a3.4 3.4 0 110 6.8 3.4 3.4 0 010-6.8zM5 20c0-3.4 3.1-5.6 7-5.6s7 2.2 7 5.6' },
   { label: 'Sistem', path: 'M12 8.4a3.6 3.6 0 110 7.2 3.6 3.6 0 010-7.2zM12 3.2v3M12 18v2.8M4.4 12h3M16.6 12h3' },
-  { label: 'Ajanlar', badge: 'Yakında', path: 'M8.6 5a2.9 2.9 0 110 5.8 2.9 2.9 0 010-5.8zM16.4 7a2.4 2.4 0 110 4.8 2.4 2.4 0 010-4.8zM2.8 19.6c0-3 2.6-4.9 5.8-4.9s5.8 1.9 5.8 4.9M15.6 15c3 .2 5.6 1.9 5.6 4.6' },
+  // Rozet kaldırıldı: kodlama döngüsü artık gerçek bir ekran açıyor.
+  { label: 'Ajanlar', path: 'M8.6 5a2.9 2.9 0 110 5.8 2.9 2.9 0 010-5.8zM16.4 7a2.4 2.4 0 110 4.8 2.4 2.4 0 010-4.8zM2.8 19.6c0-3 2.6-4.9 5.8-4.9s5.8 1.9 5.8 4.9M15.6 15c3 .2 5.6 1.9 5.6 4.6' },
 ];
 
 export interface IconItem {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdminPanel } from './AdminPanel';
+import { CodingPanel } from './CodingPanel';
 import { OrbEngine, type OrbMode } from './orb/OrbEngine';
 import { apiClient } from '../api/client';
 import {
@@ -42,6 +43,7 @@ export const JarvisShell = () => {
   const [nav, setNav] = useState('Sohbet');
   const [micOn, setMicOn] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [codingOpen, setCodingOpen] = useState(false);
 
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -206,7 +208,12 @@ export const JarvisShell = () => {
               return (
                 <div
                   key={item.label}
-                  onClick={() => setNav(item.label)}
+                  onClick={() => {
+                    setNav(item.label);
+                    // "Ajanlar" artık bir yer tutucu değil: kodlama döngüsünü
+                    // açıyor. Diğer başlıkların henüz bir ekranı yok.
+                    if (item.label === 'Ajanlar') setCodingOpen(true);
+                  }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12, height: 44,
                     padding: '0 14px', borderRadius: 12, cursor: 'pointer', transition: 'background .18s',
@@ -454,6 +461,9 @@ export const JarvisShell = () => {
         </div>
 
         {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+        {codingOpen && (
+          <CodingPanel sessionId={sessionId} onClose={() => setCodingOpen(false)} />
+        )}
       </div>
     </div>
   );

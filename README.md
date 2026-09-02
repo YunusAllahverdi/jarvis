@@ -219,6 +219,12 @@ Yanıt; görevi, her turun adımlarını, doğrulama sonucunu, `git diff`'i ve y
   seçebilir ve o liste de komut politikasının tanıdıklarıyla süzülür.
 - Döngü sohbet akışına bağlı değildir; buradaki bir sorun normal sohbeti etkilemez.
 
+Kabuktaki **Ajanlar** başlığı bu döngüyü açar: istek yazılır, turlar adım adım
+izlenir, doğrulama sonucu ve `git diff` görülür. Panelde yalnızca `completed`
+yeşildir — `applied_unverified` bilinçli olarak sarıdır, çünkü doğrulanmamış bir
+değişikliği başarılı göstermek backend'in kendine yasakladığı iddiayı arayüzde
+yapmak olurdu.
+
 ## Çoklu ajan — Council üyeleri
 
 Council çoktan çok modelliydi; eksik olan tek şey her üyenin **kendi
