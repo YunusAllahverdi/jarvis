@@ -78,6 +78,30 @@ class AgentService:
 
         return self._runner.tool_executor
 
+    @property
+    def council_service(self) -> CouncilService | None:
+        """Bağlı Council servisi; yoksa None."""
+
+        return self._council_service
+
+    def set_council(
+        self, service: CouncilService | None, gate: CouncilGate | None
+    ) -> None:
+        """Council'ı kurucudan sonra bağlar veya değiştirir (geç bağlama).
+
+        `ChatOrchestrator.set_*` metodlarıyla aynı kalıp ve aynı gerekçe:
+        yönetim panelinden üye listesi değiştirildiğinde Council'ın yeniden
+        kurulması gerekir ve bunun için uygulamayı yeniden başlatmak
+        istenmez — sağlayıcı değişiminde de aynı beklenti vardı.
+
+        Servis ve kapı BİRLİKTE atanır: kapısız bir Council her mesajda
+        çalışırdı, servissiz bir kapı ise hiçbir şey açmazdı. İkisini ayrı
+        ayrı atanabilir bırakmak, aralarında tutarsız bir ara duruma izin
+        vermek olurdu.
+        """
+        self._council_service = service
+        self._council_gate = gate
+
     def build_context(self, user_message: str, *, session_id: str | None = None) -> AgentContext:
         """Yalnızca bağlamı kurar (karar vermez, yürütmez).
 

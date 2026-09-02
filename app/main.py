@@ -40,6 +40,7 @@ from app.memory.store import MemoryStore
 from app.services.agent_service import AgentService
 from app.services.coding_service import CodingService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
+from app.services.council_config import CouncilMemberStore
 from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.council_service import CouncilService
 from app.services.learning_service import LearningService
@@ -368,6 +369,53 @@ def _build_council_service(
     return service, list(providers_by_model.values())
 
 
+def _build_council_from_store(
+    settings: Settings, store: CouncilMemberStore
+) -> tuple[CouncilService | None, list[LLMProvider]]:
+    """Üye deposundan Council'ı kurar; yeterli üye yoksa `(None, [])`.
+
+    `_build_council_service`'ten farkı, üyelerin AYRI sağlayıcılara ve ayrı
+    anahtarlara gidebilmesidir — "birden fazla ajan, birden fazla anahtar"
+    isteğinin karşılığı budur. Council çekirdeği bu farkı hiç görmez;
+    ona yine yalnızca opaque kimlikli üyeler verilir.
+
+    Depo boşsa bu bir hata DEĞİLDİR: kullanıcı üye tanımlamamıştır ve
+    yapılandırma yolundan gelen Council (varsa) geçerli kalır.
+    """
+    members, chairman, providers = store.build_members(
+        max_members=settings.council_max_members
+    )
+    if chairman is None or len(members) < settings.council_min_candidates:
+        if members:
+            logger.warning(
+                "council_store_insufficient_members",
+                extra={
+                    "configured": len(members),
+                    "required": settings.council_min_candidates,
+                },
+            )
+        return None, []
+
+    logger.info(
+        "council_built_from_store",
+        extra={"member_count": len(members), "provider_count": len(providers)},
+    )
+    return (
+        CouncilService(
+            members=members,
+            chairman=chairman,
+            min_candidates=settings.council_min_candidates,
+            review_enabled=settings.council_review_enabled,
+            member_timeout_seconds=settings.council_member_timeout_seconds,
+            total_timeout_seconds=settings.council_total_timeout_seconds,
+            max_concurrency=settings.council_max_concurrency,
+            max_candidate_chars=settings.council_max_candidate_chars,
+            max_review_chars=settings.council_max_review_chars,
+        ),
+        providers,
+    )
+
+
 def _build_agent_stack(
     *,
     conversation_store: ConversationStore,
@@ -570,6 +618,17 @@ def create_app(
         else None
     )
 
+    # Council, lifespan sırasında üye deposundan YENİDEN kurulabilir; o an
+    # hangi servisin ve hangi sağlayıcıların geçerli olduğunu tek yerde
+    # tutmak için değiştirilebilir bir kayıt kullanılır. İki ayrı yerel
+    # değişken bırakılsaydı, kapatma adımı eski sağlayıcı listesini kapatıp
+    # yenisini sızdırabilirdi.
+    active_council: dict[str, object] = {
+        "service": initial_council_service,
+        "gate": council_gate,
+        "providers": council_providers,
+    }
+
     # Başlangıçta bellek içi: kalıcı kayıt bir dosya açar ve bu, uygulama
     # fiilen başlayana kadar yapılmamalıdır (lifespan içinde takas edilir).
     initial_audit_log = InMemoryAuditLog()
@@ -662,6 +721,36 @@ def create_app(
             if startup_llm_config.get() != startup_llm_config._default:
                 await active_provider.switch(startup_llm_config.build_provider())
 
+            # Üye başına sağlayıcı deposu. Tanımlı üye varsa Council BURADAN
+            # kurulur ve `council_models` ayarı yok sayılır: ikisi birden
+            # geçerli olsaydı, panelden üye silen kullanıcı ayardan gelen
+            # üyelerin sessizce devam ettiğini görürdü.
+            startup_council_store = CouncilMemberStore(
+                _resolve_audit_db_path(active_settings)
+            )
+            app_instance.state.council_member_store = startup_council_store
+            stored_service, stored_providers = _build_council_from_store(
+                active_settings, startup_council_store
+            )
+            if stored_service is not None:
+                # Ayardan gelen Council varsa sağlayıcıları sızdırılmadan
+                # bırakılır: bu noktada henüz hiçbir istek görmediler.
+                for superseded in active_council["providers"]:  # type: ignore[union-attr]
+                    closer = getattr(superseded, "aclose", None)
+                    if closer is None:
+                        continue
+                    try:
+                        await closer()
+                    except Exception:  # noqa: BLE001
+                        logger.exception("provider_close_failed")
+                active_council["service"] = stored_service
+                active_council["providers"] = stored_providers
+                active_council["gate"] = CouncilGate(
+                    enabled=True,
+                    member_count=stored_service.member_count,
+                    min_candidates=active_settings.council_min_candidates,
+                )
+
         # Kalıcı denetim kaydı yalnızca veritabanına zaten dokunulan
         # kurulumlarda açılır. Sağlayıcı enjekte edildiğinde hiçbir dosya
         # oluşturulmaz; o durumda kayıt bellekte kalır.
@@ -693,8 +782,8 @@ def create_app(
                     provider=active_provider,
                     model_label=active_settings.ollama_model,
                 ),
-                council_service=initial_council_service,
-                council_gate=council_gate,
+                council_service=active_council["service"],  # type: ignore[arg-type]
+                council_gate=active_council["gate"],  # type: ignore[arg-type]
                 audit_log=startup_audit_log,
                 workspace_guard=workspace_guard,
                 change_journal=app_instance.state.checkpoint_store,
@@ -707,6 +796,11 @@ def create_app(
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor
+            # Yönetim uçları Council'ı yeniden kurduğunda buradaki durumu da
+            # günceller; başlangıçta ikisi tutarlı olmalıdır.
+            app_instance.state.council_service = active_council["service"]
+            app_instance.state.council_gate = active_council["gate"]
+            app_instance.state.council_providers = active_council["providers"]
             # Sohbet entegrasyonu ayrı bir anahtardır: agent API'si açık
             # kalırken sohbet akışının agent'ı hiç çağırmaması istenebilir.
             if active_settings.agent_chat_integration:
@@ -737,7 +831,14 @@ def create_app(
         # Council üyeleri için model başına ayrı birer HTTP istemcisi açılır;
         # hiçbiri sızdırılmamalıdır. Bir kapatmanın başarısız olması diğerlerini
         # engellememeli, bu yüzden her biri ayrı ayrı korunur.
-        for closable in (active_provider, *council_providers):
+        # Kapatılacak Council sağlayıcıları, uygulamanın SON durumundan
+        # okunur: yönetim panelinden üye değiştirildiyse liste başlangıçtaki
+        # liste değildir ve eskisini kapatmak yenisini sızdırmak olurdu.
+        closing_council = (
+            getattr(app_instance.state, "council_providers", None)
+            or active_council["providers"]
+        )
+        for closable in (active_provider, *closing_council):  # type: ignore[misc]
             if not hasattr(closable, "aclose"):
                 continue
             try:
@@ -764,6 +865,9 @@ def create_app(
     # Geri alma kaydı bir çalışma kökü gerektirir; lifespan'de kurulur.
     app.state.checkpoint_store = None
     app.state.llm_config_store = None
+    # Üye başına Council yapılandırması: diğer kalıcı depolarla aynı gerekçeyle
+    # lifespan'de kurulur, o ana kadar None kalır ve yönetim ucu 503 döner.
+    app.state.council_member_store = None
     app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.

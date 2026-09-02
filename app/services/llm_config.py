@@ -59,6 +59,35 @@ class LLMConfig(BaseModel):
     has_api_key: bool = False
 
 
+def build_llm_provider(
+    *,
+    kind: LLMProviderKind,
+    base_url: str,
+    model: str | None,
+    api_key: str | None = None,
+    timeout_seconds: float = 60.0,
+) -> LLMProvider:
+    """Yapılandırma alanlarından gerçek bir sağlayıcı kurar — tek tanım noktası.
+
+    Hem tekil sağlayıcı yapılandırması hem de Council'ın üye başına
+    yapılandırması buradan geçer. İki kopya bırakılsaydı, yeni bir sağlayıcı
+    türü eklendiğinde biri güncellenip diğeri unutulabilirdi ve Council
+    sessizce eski türlerle sınırlı kalırdı.
+
+    Anahtar doğrudan sağlayıcıya verilir, hiçbir yere kopyalanmaz.
+    """
+    if kind is LLMProviderKind.OPENAI_COMPATIBLE:
+        return OpenAICompatibleProvider(
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+        )
+    return OllamaProvider(
+        base_url=base_url, model=model, timeout_seconds=timeout_seconds
+    )
+
+
 _DDL_CONFIG = """
 CREATE TABLE IF NOT EXISTS llm_config (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
@@ -166,18 +195,11 @@ class LLMConfigStore:
         """
         row = self._row()
         config = self.get()
-        api_key = row["api_key"] if row else None
-
-        if config.kind is LLMProviderKind.OPENAI_COMPATIBLE:
-            return OpenAICompatibleProvider(
-                base_url=config.base_url,
-                model=config.model,
-                api_key=api_key,
-                timeout_seconds=config.timeout_seconds,
-            )
-        return OllamaProvider(
+        return build_llm_provider(
+            kind=config.kind,
             base_url=config.base_url,
             model=config.model,
+            api_key=row["api_key"] if row else None,
             timeout_seconds=config.timeout_seconds,
         )
 

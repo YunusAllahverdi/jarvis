@@ -15,7 +15,7 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Öğrenme ve kullanıcı modeli | Çalışıyor |
 | Ajan karar katmanı (bağlam → politika → runner) | Çalışıyor |
 | Kodlama döngüsü (planla → uygula → doğrula → düzelt) | Çalışıyor, **varsayılan kapalı** |
-| LLM Council (çok modelli müzakere) | Çalışıyor, **varsayılan kapalı** |
+| LLM Council (çok modelli müzakere, üye başına anahtar) | Çalışıyor, **varsayılan kapalı** |
 | Güvenlik: izin politikası, onay akışı, denetim kaydı | Çalışıyor |
 | Dosya araçları (oku / yaz / ara / proje özeti) | Çalışıyor, **varsayılan kapalı** |
 | Terminal aracı | Çalışıyor, **varsayılan kapalı** |
@@ -218,6 +218,39 @@ Yanıt; görevi, her turun adımlarını, doğrulama sonucunu, `git diff`'i ve y
 - **Doğrulama komutunu model uyduramaz.** Yalnızca yapılandırılmış adaylar arasından
   seçebilir ve o liste de komut politikasının tanıdıklarıyla süzülür.
 - Döngü sohbet akışına bağlı değildir; buradaki bir sorun normal sohbeti etkilemez.
+
+## Çoklu ajan — Council üyeleri
+
+Council çoktan çok modelliydi; eksik olan tek şey her üyenin **kendi
+servisine, kendi anahtarıyla** gidebilmesiydi. Artık üyeler tek tek
+tanımlanıyor ve değişiklik **çalışma zamanında** devreye giriyor:
+
+- `GET    /api/admin/council` — üyeler ve Council'ın fiilen açık olup olmadığı
+- `PUT    /api/admin/council/members/{id}` — üye ekler veya günceller
+- `DELETE /api/admin/council/members/{id}` — üyeyi siler
+
+```bash
+curl -X PUT localhost:8000/api/admin/council/members/uzak-model \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"openai_compatible","base_url":"https://api.example.com/v1",
+       "model":"gpt-4o","api_key":"sk-...","is_chairman":true}'
+```
+
+- **Üye tanımlamak yetmez.** Etkin üye sayısı `JARVIS_COUNCIL_MIN_CANDIDATES`
+  (varsayılan 2) altındaysa müzakere kurulmaz; yanıttaki `active` alanı bunu
+  açıkça söyler. Sayı altına düşerse Council **sökülür** ve sistem tek-LLM
+  cevabına döner — yarım bir Council'dan iyidir.
+- **Anahtar geri okunmaz.** Yanıtlarda yalnızca `has_api_key` döner. Anahtar
+  gönderilmeden yapılan güncelleme mevcut anahtarı korur; silmek için
+  `clear_api_key` gerekir.
+- **Chairman tektir.** Yeni bir chairman atandığında eskisi sıradan üyeye
+  döner. İşaretli chairman yoksa ilk üyenin sağlayıcısı yeniden kullanılır.
+- **Model adı Council çekirdeğine ulaşmaz.** Üyeler `member-1`, `member-2`
+  gibi opaque kimliklerle görünür; akran değerlendirmesinin anonimliği buna
+  bağlıdır.
+- Üye tanımlıysa `JARVIS_COUNCIL_MODELS` ayarı **yok sayılır** — ikisi birden
+  geçerli olsaydı, panelden üye silen kullanıcı ayardan gelenlerin sessizce
+  devam ettiğini görürdü.
 
 ### Onay ve geri alma uçları
 
