@@ -22,6 +22,7 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coding import router as coding_router
 from app.api.routes.health import router as health_router
+from app.api.routes.insight import router as insight_router
 from app.api.routes.user_model import router as user_model_router
 from app.coding.loop import CodingLoop
 from app.coding.planner import CodingPlanner
@@ -898,6 +899,7 @@ def create_app(
     app.include_router(approvals_router, prefix="/api")
     app.include_router(checkpoints_router, prefix="/api")
     app.include_router(coding_router, prefix="/api")
+    app.include_router(insight_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])

@@ -47,11 +47,34 @@ export interface IconItem {
   path: string;
 }
 
-export const SHORTCUTS: IconItem[] = [
-  { label: 'Notlar', path: 'M7 4.5h7l4 4v11H7zM14 4.5V9h4' },
-  { label: 'Takvim', path: 'M5 7h14v12H5zM8 4.5V8M16 4.5V8M5 11h14' },
-  { label: 'Görevler', path: 'M5 6.5h14v13H5zM8.5 12.5l2.5 2.5 4.5-5' },
-  { label: 'Dosyalar', path: 'M4.5 11L12 4.8 19.5 11v8.2h-15z' },
+export interface ShortcutItem extends IconItem {
+  /** Varsa bu gezinme ekranını açar. */
+  section?: string;
+  /** Ekranı yoksa sohbet girişine yazılacak metin. */
+  prompt?: string;
+}
+
+/**
+ * Kısayollar.
+ *
+ * Notlar ve Takvim henüz BACKEND'DE YOK. Onları da bir ekran açıyormuş gibi
+ * göstermek yerine sohbete bir istek yazdırıyorlar: Jarvis o isteği elindeki
+ * araçlarla karşılayabildiği kadar karşılar. Var olmayan bir ekranı açan bir
+ * düğme, kırık bir düğmedir.
+ */
+export const SHORTCUTS: ShortcutItem[] = [
+  { label: 'Bellek', path: 'M7 4.5h7l4 4v11H7zM14 4.5V9h4', section: 'Bellek' },
+  { label: 'Deneyim', path: 'M5 7h14v12H5zM8 4.5V8M16 4.5V8M5 11h14', section: 'Deneyimler' },
+  {
+    label: 'Ajan',
+    path: 'M5 6.5h14v13H5zM8.5 12.5l2.5 2.5 4.5-5',
+    section: 'Ajanlar',
+  },
+  {
+    label: 'Sistem',
+    path: 'M4.5 11L12 4.8 19.5 11v8.2h-15z',
+    section: 'Sistem',
+  },
 ];
 
 export const SUGGESTIONS: IconItem[] = [

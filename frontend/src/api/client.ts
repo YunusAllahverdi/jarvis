@@ -116,6 +116,71 @@ export interface CodingResult {
   error: string | null;
 }
 
+export interface MemoryRecordView {
+  id: string;
+  memory_type: string;
+  content: string;
+  valid_at: string;
+  importance: number;
+  source_session_id: string | null;
+}
+
+export interface ExperienceView {
+  id: string;
+  occurred_at: string;
+  user_message: string;
+  assistant_response: string;
+  outcome: string;
+  tool_calls: string[];
+  session_id: string | null;
+}
+
+export interface SystemStatus {
+  cpu_percent: number;
+  memory_percent: number;
+  memory_total_bytes: number;
+  memory_available_bytes: number;
+  disk_percent: number;
+  disk_total_bytes: number;
+  disk_free_bytes: number;
+  /** false ise ölçülen makine kullanıcının değil, sunucununkidir. */
+  is_local: boolean;
+}
+
+export interface UserTraitView {
+  id: string;
+  trait_type: string;
+  key: string;
+  value: string;
+  confidence: number;
+  evidence_count: number;
+  last_observed_at: string;
+}
+
+export interface InteractionStats {
+  [key: string]: number | string | null;
+}
+
+export interface UserProfile {
+  generated_at: string;
+  trait_count: number;
+  traits_by_type: Record<string, number>;
+  traits: UserTraitView[];
+  interaction: InteractionStats;
+}
+
+/** GET yardımcı: hata mesajını tek yerde çözer. */
+async function getJson<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`);
+  } catch {
+    throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
+  }
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return response.json() as Promise<T>;
+}
+
 export const apiClient = {
   /** Bir mesajı Jarvis'e gönderir ve cevabı döndürür. */
   async chat(message: string, sessionId?: string | null): Promise<ChatResponse> {
@@ -182,5 +247,36 @@ export const apiClient = {
 
     if (!response.ok) throw new Error(await errorMessage(response));
     return response.json() as Promise<CodingResult>;
+  },
+
+  /** Bellek kayıtlarını listeler; sorgu verilirse arar. */
+  async getMemoryRecords(query = '', limit = 30) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (query.trim()) params.set('query', query.trim());
+    return getJson<{ records: MemoryRecordView[]; count: number }>(
+      `/memory/records?${params}`,
+    );
+  },
+
+  /** Son deneyimleri listeler. */
+  async getExperiences(limit = 30) {
+    return getJson<{ experiences: ExperienceView[]; count: number }>(
+      `/experiences?limit=${limit}`,
+    );
+  },
+
+  /** Sunucunun ölçülen kaynak kullanımı. */
+  async getSystemStatus() {
+    return getJson<SystemStatus>('/system/status');
+  },
+
+  /** Öğrenilmiş kullanıcı profili. */
+  async getUserProfile() {
+    return getJson<UserProfile>('/user/profile');
+  },
+
+  /** Etkileşim istatistikleri. */
+  async getUserStats() {
+    return getJson<InteractionStats>('/user/stats');
   },
 };
