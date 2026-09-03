@@ -61,6 +61,7 @@ def build_summary(result: CodingResult) -> str:
         lines.extend(f"  {line}" for line in steps)
 
     lines.extend(_verification_lines(result))
+    lines.extend(_review_lines(result))
 
     if result.pending_approval_ids:
         lines.append(
@@ -97,6 +98,33 @@ def _step_lines(iterations: list[Iteration]) -> list[str]:
             target = outcome.arguments.get("path") or outcome.arguments.get("command")
             suffix = f" [{target}]" if isinstance(target, str) and target else ""
             lines.append(f"- {outcome.tool_name}{suffix}: {mark}")
+    return lines
+
+
+def _review_lines(result: CodingResult) -> list[str]:
+    """Diff incelemesinin bulgularını anlatır.
+
+    İnceleme yapılmadıysa bu AÇIKÇA söylenir. Sessiz kalmak, incelenmemiş
+    bir değişikliği incelenmiş gibi göstermek olurdu — döngünün doğrulama
+    konusundaki tutumunun aynısı.
+    """
+    review = result.review
+    if review is None:
+        return []
+
+    ran = getattr(review, "ran", False)
+    if not ran:
+        reason = getattr(review, "skipped_reason", None)
+        return [f"Kod incelemesi yapılmadı: {reason or 'sebep bilinmiyor'}"]
+
+    lines = [
+        f"Kod incelemesi: {getattr(review, 'reviewer_count', 0)} inceleyici."
+    ]
+    if getattr(review, "diff_truncated", False):
+        lines.append("  Uyarı: diff kırpıldı, inceleme değişikliğin tamamını görmedi.")
+    findings = str(getattr(review, "findings", "") or "").strip()
+    if findings:
+        lines.extend(f"  {line}" for line in findings.splitlines())
     return lines
 
 

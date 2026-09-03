@@ -23,9 +23,13 @@ from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coding import router as coding_router
 from app.api.routes.health import router as health_router
 from app.api.routes.insight import router as insight_router
+from app.api.routes.notes import router as notes_router
+from app.notes.store import NoteStore
+from app.security.network import NetworkGuard
 from app.api.routes.user_model import router as user_model_router
 from app.coding.loop import CodingLoop
 from app.coding.planner import CodingPlanner
+from app.coding.review import CodeReviewer
 from app.coding.verification import Verifier
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
@@ -64,6 +68,8 @@ from app.tools.defaults import (
     build_default_tool_registry,
     register_context_tools,
     register_filesystem_tools,
+    register_note_tools,
+    register_research_tool,
     register_terminal_tool,
 )
 from app.tools.executor import ToolExecutor
@@ -226,6 +232,7 @@ def _build_coding_service(
     provider: LLMProvider,
     command_policy: CommandPolicy,
     approval_service: ApprovalService | None,
+    council_service: CouncilService | None = None,
 ) -> CodingService | None:
     """Kodlama döngüsünü kurar; şartlar sağlanmıyorsa None döner.
 
@@ -267,6 +274,15 @@ def _build_coding_service(
         ),
         tool_executor=executor,
         approval_service=approval_service,
+        # İnceleme Council'a bağlıdır: üye başına farklı sağlayıcı
+        # yapılandırılabildiği için diff'i, kodu yazandan BAŞKA modellere
+        # inceletmek mümkündür. Kendi işini inceleyen bir model, kendi kör
+        # noktasını da taşır.
+        reviewer=(
+            CodeReviewer(council_service=council_service)
+            if council_service is not None and settings.coding_review_enabled
+            else None
+        ),
         verification_candidates=commands,
         max_iterations=settings.coding_max_iterations,
     )
@@ -275,6 +291,7 @@ def _build_coding_service(
         extra={
             "max_iterations": settings.coding_max_iterations,
             "verification_command_count": len(commands),
+            "review_enabled": council_service is not None and settings.coding_review_enabled,
         },
     )
     return CodingService(loop=loop)
@@ -434,6 +451,10 @@ def _build_agent_stack(
     change_journal: object | None = None,
     approval_service: ApprovalService | None = None,
     policy_boundary: ToolPermissionPolicy,
+    note_store: NoteStore | None = None,
+    notes_writable: bool = True,
+    network_guard: NetworkGuard | None = None,
+    research_timeout_seconds: float = 20.0,
     terminal_enabled: bool = False,
     command_policy: CommandPolicy | None = None,
     terminal_timeout_seconds: float = 60.0,
@@ -462,6 +483,14 @@ def _build_agent_stack(
         guard=workspace_guard,
         writable=workspace_writable,
         journal=change_journal,
+    )
+    # Notlar ve araştırma da yalnızca agent registry'sine eklenir; sohbetin
+    # LLM'e sunduğu tool yüzeyi değişmez.
+    registered += register_note_tools(
+        agent_registry, store=note_store, writable=notes_writable
+    )
+    registered += register_research_tool(
+        agent_registry, guard=network_guard, timeout_seconds=research_timeout_seconds
     )
     registered += register_terminal_tool(
         agent_registry,
@@ -680,6 +709,11 @@ def create_app(
             chat_orchestrator.set_conversation_store(startup_conversations)
             app_instance.state.conversation_store = startup_conversations
 
+        if using_default_provider and active_settings.notes_enabled:
+            # Not deposu da bir dosya açar; diğer kalıcı depolarla aynı
+            # gerekçeyle burada kurulur.
+            app_instance.state.note_store = NoteStore(active_settings.memory_db_path)
+
         if auto_wire_memory_on_startup:
             # Tek bir SQLiteMemoryStore örneği kurulur ve zamansal (temporal)
             # ile getirme (retrieval) servisleri arasında paylaşılır — iki
@@ -818,6 +852,16 @@ def create_app(
                 workspace_writable=active_settings.workspace_writable,
                 approval_service=app_instance.state.approval_service,
                 policy_boundary=agent_policy,
+                note_store=getattr(app_instance.state, "note_store", None),
+                notes_writable=active_settings.notes_writable,
+                network_guard=(
+                    NetworkGuard(
+                        allowed_domains=active_settings.research_allowed_domains
+                    )
+                    if active_settings.research_enabled
+                    else None
+                ),
+                research_timeout_seconds=active_settings.research_timeout_seconds,
                 terminal_enabled=active_settings.terminal_enabled,
                 command_policy=command_policy,
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
@@ -845,6 +889,7 @@ def create_app(
                 provider=active_provider,
                 command_policy=command_policy,
                 approval_service=app_instance.state.approval_service,
+                council_service=active_council["service"],  # type: ignore[arg-type]
             )
 
         logger.info(
@@ -907,6 +952,8 @@ def create_app(
     # Üye başına Council yapılandırması: diğer kalıcı depolarla aynı gerekçeyle
     # lifespan'de kurulur, o ana kadar None kalır ve yönetim ucu 503 döner.
     app.state.council_member_store = None
+    # Not deposu da lifespan'de kurulur; o ana kadar uç 503 döner.
+    app.state.note_store = None
     app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
@@ -938,6 +985,7 @@ def create_app(
     app.include_router(checkpoints_router, prefix="/api")
     app.include_router(coding_router, prefix="/api")
     app.include_router(insight_router, prefix="/api")
+    app.include_router(notes_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])

@@ -85,6 +85,25 @@ class Settings(BaseSettings):
     # Tek bir komutun çalışabileceği en uzun süre.
     terminal_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
 
+    # Notlar
+    # ------------------------------------------------------------------
+    # Kalıcı not yüzeyi. Açık olması ajanın notları OKUYABİLMESİ demektir;
+    # yazması ayrı bir karardır ve açık olsa bile her yazma onaydan geçer.
+    notes_enabled: bool = True
+    notes_writable: bool = True
+
+    # Araştırma (web erişimi)
+    # ------------------------------------------------------------------
+    # VARSAYILAN KAPALI. Ajanın internete çıkması, dosya erişimi ve terminal
+    # gibi kullanıcının açıkça vermesi gereken bir yetkidir. Açık olsa bile
+    # her getirme onaydan geçer ve özel ağ adresleri hiçbir koşulda
+    # getirilemez (bkz. app/security/network.py).
+    research_enabled: bool = False
+    # İzin verilen alan adları. Boş bırakılırsa özel ağ dışındaki her adres
+    # getirilebilir; liste verilirse yalnızca o alanlar ve alt alanları.
+    research_allowed_domains: list[str] = Field(default_factory=list)
+    research_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+
     # Kodlama döngüsü
     # ------------------------------------------------------------------
     # VARSAYILAN KAPALI ve ayrıca bir çalışma kökü, yazma yetkisi ve terminal
@@ -96,6 +115,11 @@ class Settings(BaseSettings):
 
     # Doğrulama başarısız olduğunda denenecek maksimum düzeltme turu.
     coding_max_iterations: int = Field(default=3, ge=1, le=10)
+
+    # Üretilen diff'in Council tarafından güvenlik/kalite gözüyle
+    # incelenmesi. Council kurulu değilse etkisizdir. İnceleme BİR KAPI
+    # DEĞİLDİR: bulguları sonucu değiştirmez, yalnızca raporlanır.
+    coding_review_enabled: bool = True
 
     # Doğrulama komutunun çalışabileceği en uzun süre. Terminal sınırından
     # AYRI tutulur: bir test paketi, tek bir incelemeden uzun sürer.

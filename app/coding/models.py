@@ -232,6 +232,19 @@ class CodingResult(BaseModel):
     error: str | None = None
     """Döngü ilerleyemediyse makine tarafından okunabilir kısa sebep."""
 
+    review: object | None = None
+    """Diff'in güvenlik/kalite incelemesi (`app.coding.review.CodeReview`).
+
+    Tür burada `object`'tir çünkü bu modül saf veri modelidir ve inceleme
+    katmanı Council'a bağımlıdır; buradan oraya bir import, veri modelini
+    Council'a bağımlı hâle getirirdi.
+
+    İnceleme BİR KAPI DEĞİLDİR: bulguları `status` alanını değiştirmez ve
+    değişikliği geri almaz. İnceleyen de bir modeldir ve yanılabilir;
+    yanılan bir modelin doğru bir değişikliği geri alabilmesi, kazanılan
+    güvenceden büyük bir risk olurdu. Karar kullanıcınındır.
+    """
+
     @property
     def ok(self) -> bool:
         return self.status is CodingStatus.COMPLETED

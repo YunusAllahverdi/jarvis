@@ -1,10 +1,14 @@
 """Jarvis başlangıcında kaydedilecek güvenli built-in tool'lar."""
 
+from app.notes.store import NoteStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
 from app.security.checkpoints import ChangeJournal
 from app.security.commands import CommandPolicy
+from app.security.network import NetworkGuard
 from app.security.paths import PathGuard
+from app.tools.builtin.notes import NoteSearchTool, NoteWriteTool
+from app.tools.builtin.research import FetchUrlTool
 from app.tools.builtin import (
     CalculatorTool,
     GetDateTool,
@@ -120,6 +124,54 @@ def register_filesystem_tools(
     for tool in tools:
         registry.register(tool)
     return [tool.name for tool in tools]
+
+
+def register_note_tools(
+    registry: ToolRegistry,
+    *,
+    store: NoteStore | None = None,
+    writable: bool = True,
+) -> list[str]:
+    """Not araçlarını kaydeder.
+
+    Depo verilmezse HİÇBİRİ kaydedilmez. `writable` kapatılırsa yalnızca
+    arama kaydedilir: kullanıcı, ajanın notlarını okumasını isteyip
+    yazmasını istemeyebilir ve tek bir ayar bunu ifade edemezdi — dosya
+    araçlarındaki ayrımın aynısı.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if store is None:
+        return []
+
+    tools: list = [NoteSearchTool(store=store)]
+    if writable:
+        tools.append(NoteWriteTool(store=store))
+    for tool in tools:
+        registry.register(tool)
+    return [tool.name for tool in tools]
+
+
+def register_research_tool(
+    registry: ToolRegistry,
+    *,
+    guard: NetworkGuard | None = None,
+    timeout_seconds: float = 20.0,
+) -> list[str]:
+    """Web getirme aracını kaydeder.
+
+    Bekçi verilmezse araç hiç var olmaz. Ağ erişimi, dosya erişimi ve
+    terminal gibi AYRI bir karardır: ajanın internete çıkması, kullanıcının
+    açıkça vermesi gereken bir yetkidir.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if guard is None:
+        return []
+    registry.register(FetchUrlTool(guard=guard, timeout_seconds=timeout_seconds))
+    return [FetchUrlTool.name]
 
 
 def register_terminal_tool(

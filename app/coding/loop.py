@@ -96,6 +96,7 @@ class CodingLoop:
         verifier: Verifier,
         tool_executor: ToolExecutor,
         approval_service: ApprovalService | None = None,
+        reviewer: object | None = None,
         verification_candidates: tuple[str, ...] = (),
         max_iterations: int = MAX_ITERATIONS,
     ) -> None:
@@ -112,6 +113,10 @@ class CodingLoop:
             approval_service: Onay bekleyen adımlar için kayıt açan servis.
                 Verilmezse döngü yine durur, ama kullanıcı yanıtlayacak bir
                 istek göremez.
+            reviewer: Üretilen diff'i güvenlik ve kalite gözüyle inceleyen
+                katman (`app.coding.review.CodeReviewer`). Verilmezse
+                inceleme hiç yapılmaz ve sonuç bunu açıkça söyler. İnceleme
+                BİR KAPI DEĞİLDİR: bulguları döngünün durumunu değiştirmez.
             verification_candidates: Görev modelinin seçebileceği doğrulama
                 komutları. Model bu listenin dışına ÇIKAMAZ.
             max_iterations: Uygula-doğrula turlarının üst sınırı.
@@ -121,6 +126,7 @@ class CodingLoop:
         self._tool_executor = tool_executor
         self._tool_registry: ToolRegistry = tool_executor.registry
         self._approval_service = approval_service
+        self._reviewer = reviewer
         self._verification_candidates = verification_candidates
         self._max_iterations = max(1, max_iterations)
 
@@ -168,7 +174,26 @@ class CodingLoop:
         )
         await self._iterate(result, task, plan, tools=tools, session_id=session_id)
         result.diff = await self._collect_diff(session_id)
+        result.review = await self._review_safely(result)
         return self._finish(result)
+
+    async def _review_safely(self, result: CodingResult) -> object | None:
+        """Diff'i inceletir; asla istisna sızdırmaz.
+
+        Doğrulama "çalışıyor mu?", inceleme "yapılmaması gereken bir şey mi
+        yapıldı?" sorusunu sorar — sızmış bir anahtar da, kaldırılmış bir
+        güvenlik kontrolü de testleri geçer. İnceleyici bağlı değilse veya
+        hata verirse sonuç yalnızca incelenmemiş olur; üretilen iş kaybolmaz.
+        """
+        if self._reviewer is None:
+            return None
+        try:
+            return await self._reviewer.review(result)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "coding_review_failed", extra={"session_id": result.session_id}
+            )
+            return None
 
     async def _iterate(
         self,
