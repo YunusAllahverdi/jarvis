@@ -225,7 +225,10 @@ def test_orchestrator_accepts_custom_prompt_provider() -> None:
     assert result.response
     system_msg = provider.received_messages[0][0]
     assert system_msg.role == "system"
-    assert system_msg.content == "custom system"
+    # Sağlayıcının metni system prompt'un BAŞINDA yer alır. Eşitlik yerine
+    # "başlıyor" sınanır çünkü orchestrator kendi kalıcı talimatlarını
+    # (tool sonuçlarının veri olduğu uyarısı) buna ekler.
+    assert system_msg.content.startswith("custom system")
 
 
 # ---------------------------------------------------------------------------

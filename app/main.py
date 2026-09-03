@@ -42,6 +42,8 @@ from app.services.agent_service import AgentService
 from app.services.coding_service import CodingService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.council_config import CouncilMemberStore
+from app.services.sqlite_conversation import SQLiteConversationStore
+from app.security.auth import ApiTokenMiddleware
 from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.council_service import CouncilService
 from app.services.learning_service import LearningService
@@ -435,6 +437,7 @@ def _build_agent_stack(
     terminal_enabled: bool = False,
     command_policy: CommandPolicy | None = None,
     terminal_timeout_seconds: float = 60.0,
+    timezone_name: str | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -448,7 +451,7 @@ def _build_agent_stack(
     Kaynak servisler isteğe bağlıdır: verilmeyen kaynak yalnızca ilgili
     bağlam bölümünün boş kalmasına ve ilgili tool'un kaydedilmemesine yol açar.
     """
-    agent_registry = build_default_tool_registry()
+    agent_registry = build_default_tool_registry(timezone_name=timezone_name)
     registered = register_context_tools(
         agent_registry, memory_retrieval=memory_retrieval, user_model=user_model
     )
@@ -533,8 +536,20 @@ def create_app(
     active_conversation_store = (
         conversation_store if conversation_store is not None else InMemoryConversationStore()
     )
+    # Kalıcı konuşma deposu bir SQLite dosyası açar; diğer depolarla aynı
+    # gerekçeyle create_app() içinde DEĞİL, uygulama fiilen başlatıldığında
+    # kurulur ve orchestrator'a geç bağlanır. Böylece `app.main`'i içe
+    # aktarmak tek başına kullanıcının veritabanına asla dokunmaz.
+    auto_wire_conversation_on_startup = (
+        conversation_store is None
+        and using_default_provider
+        and active_settings.conversation_persistence
+    )
+
     active_tool_registry = (
-        tool_registry if tool_registry is not None else build_default_tool_registry()
+        tool_registry
+        if tool_registry is not None
+        else build_default_tool_registry(timezone_name=active_settings.timezone or None)
     )
 
     # Çağıran memory_service ve/veya memory_retrieval'i açıkça verdiyse hemen
@@ -657,6 +672,14 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
+        if auto_wire_conversation_on_startup:
+            # Konuşma geçmişi artık yeniden başlatmayı atlatır. Ajan da AYNI
+            # örneği alır (aşağıda), yoksa sohbet ile ajan farklı geçmişlere
+            # bakardı ve ajanın bağlamı yeniden başlatmada boşalırdı.
+            startup_conversations = SQLiteConversationStore(active_settings.memory_db_path)
+            chat_orchestrator.set_conversation_store(startup_conversations)
+            app_instance.state.conversation_store = startup_conversations
+
         if auto_wire_memory_on_startup:
             # Tek bir SQLiteMemoryStore örneği kurulur ve zamansal (temporal)
             # ile getirme (retrieval) servisleri arasında paylaşılır — iki
@@ -774,7 +797,11 @@ def create_app(
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
             # Kurulmamış olan kaynak None geçilir; agent bunu sorunsuz karşılar.
             startup_agent = _build_agent_stack(
-                conversation_store=active_conversation_store,
+                # Sohbetle AYNI depo: ayrı örnekler olsaydı ajanın gördüğü
+                # geçmiş, kullanıcının gördüğünden farklı olurdu.
+                conversation_store=getattr(
+                    app_instance.state, "conversation_store", active_conversation_store
+                ),
                 memory_retrieval=app_instance.state.memory_retrieval,
                 experience_store=app_instance.state.experience_store,
                 user_model=app_instance.state.user_model_service,
@@ -794,6 +821,7 @@ def create_app(
                 terminal_enabled=active_settings.terminal_enabled,
                 command_policy=command_policy,
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
+                timezone_name=active_settings.timezone or None,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor
@@ -853,8 +881,18 @@ def create_app(
         version=active_settings.app_version,
         lifespan=lifespan,
     )
+    # Kimlik katmanı EN DIŞTA durur: yönlendirmeden önce çalışır, dolayısıyla
+    # sonradan eklenen bir router'ı korumak için ayrıca bir şey yapılması
+    # gerekmez — muaf tutmak için yapılması gerekir.
+    app.add_middleware(
+        ApiTokenMiddleware,
+        token=active_settings.api_token,
+        host=active_settings.host,
+    )
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
+    # Kalıcı depo lifespan'de takas edilir; o ana kadar RAM deposu geçerlidir.
+    app.state.conversation_store = active_conversation_store
     app.state.tool_registry = active_tool_registry
     app.state.approval_service = ApprovalService(
         ttl_seconds=active_settings.approval_ttl_seconds,

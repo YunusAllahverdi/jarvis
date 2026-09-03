@@ -25,11 +25,21 @@ from app.tools.builtin import (
 from app.tools.registry import ToolRegistry
 
 
-def build_default_tool_registry() -> ToolRegistry:
-    """Sadece READ izinli Step 2 tool'larıyla dolu registry oluşturur."""
+def build_default_tool_registry(*, timezone_name: str | None = None) -> ToolRegistry:
+    """Sadece READ izinli temel tool'larla dolu registry oluşturur.
+
+    Args:
+        timezone_name: Saat/tarih araçlarının kullanacağı IANA dilim adı.
+            Verilmezse sunucunun yerel dilimi kullanılır.
+    """
 
     registry = ToolRegistry()
-    for tool in (GetTimeTool(), GetDateTool(), CalculatorTool(), SystemStatusTool()):
+    for tool in (
+        GetTimeTool(timezone_name=timezone_name),
+        GetDateTool(timezone_name=timezone_name),
+        CalculatorTool(),
+        SystemStatusTool(),
+    ):
         registry.register(tool)
     return registry
 

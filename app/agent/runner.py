@@ -78,10 +78,7 @@ class AgentRunner:
             )
             return AgentResult(
                 decision=decision,
-                outcomes=[
-                    ActionOutcome(tool_name=action.tool_name, skipped=True)
-                    for action in decision.actions
-                ],
+                outcomes=[self._pending_outcome(action) for action in decision.actions],
                 status=AgentStatus.PENDING_CONFIRMATION,
             )
 
@@ -130,6 +127,35 @@ class AgentRunner:
             },
         )
         return AgentResult(decision=decision, outcomes=outcomes, status=status)
+
+    def _pending_outcome(self, action) -> ActionOutcome:  # noqa: ANN001
+        """Onay bekleyen bir eylem için, kayıt açılabilecek bir sonuç üretir.
+
+        BURASI BİR BOŞLUĞU KAPATIR. Daha önce bu eylemler yalnızca
+        `skipped=True` ile işaretleniyordu; `AgentService._open_pending_approvals`
+        ise `requires_approval` alanına baktığı için hiçbir onay kaydı
+        açmıyordu. Sonuç: ajan "onay gerekiyor" diyor, kullanıcı ise
+        onaylayacak bir istek göremiyordu.
+
+        Argümanlar HAM hâlleriyle taşınır ve bir uyarı ile birlikte gelir:
+        bu yolda hiçbir adım çalışmadığı için, önceki adımlara yapılan
+        başvurular (`$from`) henüz çözülememiştir. Onay katmanı bunu
+        `requires_resolution` ile görür ve çözülmemiş argümanlı bir çağrı
+        için kayıt AÇMAZ — kullanıcının neye dönüşeceği belli olmayan bir
+        taslağı onaylaması, onayın anlamını boşaltırdı.
+
+        Tek adımlı planlarda böyle bir başvuru olamaz ve akış sorunsuz
+        çalışır; çok adımlı planlarda ise doğru cevap kodlama döngüsüdür
+        (bkz. `app.coding.loop`), çünkü orada önceki adımlar gerçekten
+        çalışmış olur ve argümanlar somuttur.
+        """
+        return ActionOutcome(
+            tool_name=action.tool_name,
+            skipped=True,
+            requires_approval=True,
+            arguments=dict(action.arguments),
+            error_message="Bu eylem kullanıcı onayı bekliyor.",
+        )
 
     async def _execute_action(
         self,

@@ -18,6 +18,11 @@ dependencies = [
   "psutil>=6.0,<8.0",
   "python-dotenv>=1.0,<2.0",
   "uvicorn[standard]>=0.30,<1.0",
+  # Windows'ta IANA saat dilimi veritabanı yoktur ve `zoneinfo` onsuz
+  # "Europe/Istanbul" gibi bir adı çözemez. Saat dilimi ayarı olmadan
+  # get_time/get_date bulutta yanlış saati verir, bu yüzden veri paketi
+  # isteğe bağlı değil zorunlu bir bağımlılıktır.
+  "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

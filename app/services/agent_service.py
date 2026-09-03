@@ -24,6 +24,7 @@ from app.agent.context import AgentContext, ContextBuilder
 from app.agent.models import AgentDecision, AgentResult, AgentStatus, Intent
 from app.agent.policy import DecisionPolicy
 from app.agent.prompts import build_council_source_block
+from app.agent.references import is_reference
 from app.agent.runner import AgentRunner
 from app.core.chat import ToolCall
 from app.security.approvals import ApprovalService
@@ -36,6 +37,22 @@ from app.services.council_service import CouncilService
 logger = logging.getLogger(__name__)
 
 _FALLBACK_REASON = "Agent katmanı bu isteği işleyemedi; normal cevap yoluna düşülmeli."
+
+
+def _has_unresolved_reference(value: object) -> bool:
+    """Argümanlar önceki bir adımın sonucuna çözülmemiş başvuru içeriyor mu?
+
+    Onay kaydı açmadan önce sorulur. Böyle bir başvuru varsa kullanıcıya
+    gösterilecek çağrı henüz eksiktir ve onaylanması, ne olduğu bilinmeyen
+    bir şeyi onaylamak olurdu.
+    """
+    if is_reference(value):
+        return True
+    if isinstance(value, dict):
+        return any(_has_unresolved_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_unresolved_reference(item) for item in value)
+    return False
 
 
 class AgentService:
@@ -166,10 +183,30 @@ class AgentService:
         for outcome in result.outcomes:
             if not outcome.requires_approval or outcome.approval_id:
                 continue
+
+            if _has_unresolved_reference(outcome.arguments):
+                # Kullanıcı, neye dönüşeceği belli olmayan bir taslağı
+                # onaylayamaz: bu adım önceki bir adımın sonucuna başvuruyor
+                # ve o adım hiç çalışmadı. Kayıt açmak, onayın anlamını
+                # boşaltmak olurdu.
+                logger.info(
+                    "agent_approval_skipped_unresolved",
+                    extra={"tool_name": outcome.tool_name, "session_id": session_id},
+                )
+                continue
+
+            permission = outcome.permission or self._permission_for(outcome.tool_name)
+            if permission is None:
+                logger.warning(
+                    "agent_approval_permission_unknown",
+                    extra={"tool_name": outcome.tool_name},
+                )
+                continue
+
             try:
                 record = self._approval_service.request(
                     ToolCall(name=outcome.tool_name, arguments=outcome.arguments),
-                    permission=PermissionLevel(outcome.permission),
+                    permission=PermissionLevel(permission),
                     session_id=session_id,
                     reason=outcome.error_message,
                 )
@@ -236,6 +273,21 @@ class AgentService:
             },
         )
         return council_result
+
+    def _permission_for(self, tool_name: str) -> PermissionLevel | None:
+        """Aracın izin seviyesini yürütme sınırının kaydından okur.
+
+        Onay bekleyen bir eylem hiç çalıştırılmadığı için sonucunda izin
+        seviyesi taşınmaz; kayıt açmak içinse gereklidir. Registry, ajanın
+        gerçekten çalıştırabileceği araçların AYNISINI içerir, dolayısıyla
+        buradan okumak ile çalıştırma anında uygulanacak seviye ayrışamaz.
+        """
+        try:
+            tool = self.tool_executor.registry.get(tool_name)
+        except Exception:  # noqa: BLE001
+            logger.exception("agent_permission_lookup_failed")
+            return None
+        return tool.permission if tool is not None else None
 
     def _fallback_decision(self) -> AgentDecision:
         """Agent kullanılamadığında üretilen kontrollü geri çekilme kararı."""

@@ -81,13 +81,15 @@ def test_chat_keeps_history_when_session_id_is_reused() -> None:
 
     assert second_response.status_code == 200
     assert second_response.json()["session_id"] == session_id
-    assert [(message.role, message.content) for message in provider.calls[1]] == [
-        (
-            "system",
-            "You are Jarvis, a helpful and concise local personal AI assistant. "
-            "Answer clearly and honestly. Use a supplied tool only when it is needed, "
-            "and never claim a tool was used when it was not.",
-        ),
+    # İDDİA: ikinci tur, ilk turun geçmişini taşır.
+    #
+    # System mesajının içeriği ayrı sınanır: orchestrator prompt'a kendi
+    # kalıcı talimatlarını ekler, dolayısıyla tam eşitlik burada geçmişi
+    # değil prompt metnini sınamış olurdu.
+    messages = provider.calls[1]
+    assert messages[0].role == "system"
+    assert messages[0].content.startswith("You are Jarvis,")
+    assert [(message.role, message.content) for message in messages[1:]] == [
         ("user", "İlk mesaj"),
         ("assistant", "Jarvis: İlk mesaj"),
         ("user", "İkinci mesaj"),

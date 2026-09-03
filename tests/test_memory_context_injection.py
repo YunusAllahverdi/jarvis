@@ -249,8 +249,15 @@ class TestMemoryTreatedAsData:
 
         sent = provider.received_messages[0]
         system_msgs = _system_messages(sent)
-        # Asıl system prompt hiç değişmemeli — enjekte edilen metin oraya sızmamalı.
-        assert system_msgs[0].content == "Sen Jarvis'sin."
+        # İDDİA: enjekte edilen metin system prompt'a SIZMAMALI.
+        #
+        # Eşitlik yerine "başlıyor + içermiyor" sınanır: system prompt'a
+        # kendi kalıcı talimatlarımız (ör. tool sonuçlarının veri olduğu
+        # uyarısı) eklenebilir ve bu güvenlik iddiasını zayıflatmaz. Katı
+        # eşitlik, kendi talimatımızı eklediğimizde de kırılırdı ve testi
+        # asıl sınadığı şeyden uzaklaştırırdı.
+        assert system_msgs[0].content.startswith("Sen Jarvis'sin.")
+        assert malicious not in system_msgs[0].content
         # Kötücül metin yalnızca ayrı, açıkça etiketlenmiş bellek bloğunun içinde bulunmalı.
         assert malicious in system_msgs[1].content
         assert "<relevant_memory>" in system_msgs[1].content
@@ -297,7 +304,8 @@ class TestMaliciousMemoryCannotForgeBlockBoundary:
 
         for call in provider.received_messages:
             system_msgs = _system_messages(call)
-            assert system_msgs[0].content == "Sen Jarvis'sin."
+            assert system_msgs[0].content.startswith("Sen Jarvis'sin.")
+            assert malicious not in system_msgs[0].content
 
 
 # ---------------------------------------------------------------------------

@@ -108,9 +108,28 @@ class Settings(BaseSettings):
     # komut politikasının tanıdıklarıyla kesiştirilerek kullanılır.
     coding_verification_commands: list[str] = Field(default_factory=list)
 
+    # Kimlik doğrulama
+    # ------------------------------------------------------------------
+    # TÜM uçlar için anahtar (sağlık ucu hariç). Boşsa uygulama yalnızca
+    # yerel adrese bağlıyken çalışır; dışarı açıldığında anahtarsız her
+    # istek reddedilir. Bkz. app/security/auth.py.
+    api_token: str = ""
+
     # Yönetim uçları için anahtar. Boşsa yönetim uçları YALNIZCA sunucu
     # yerel adrese bağlıyken çalışır; dışarı açıldığında anahtar zorunlu olur.
+    # `api_token`'dan AYRIDIR: birincisi "bu sunucuya erişebilir misin",
+    # ikincisi "sağlayıcıyı ve anahtarları değiştirebilir misin" sorusunu
+    # yanıtlar ve ikisi aynı kişide olmak zorunda değildir.
     admin_token: str = ""
+
+    # Saat dilimi (IANA adı, ör. "Europe/Istanbul"). Boş bırakılırsa
+    # sunucunun yerel dilimi kullanılır — bulutta bu yanlış olur, bu yüzden
+    # araçlar kullandıkları dilimi sonuçta bildirir.
+    timezone: str = ""
+
+    # Konuşma geçmişinin kalıcı olup olmayacağı. Kapalıyken geçmiş RAM'de
+    # tutulur ve yeniden başlatmada silinir (eski davranış).
+    conversation_persistence: bool = True
 
     # Denetim kaydı. Boş bırakılırsa bellek veritabanının yanına yazılır.
     # Kalıcıdır: onay kayıtlarının aksine, ne yapıldığının izi yeniden
