@@ -169,11 +169,37 @@ export interface UserProfile {
   interaction: InteractionStats;
 }
 
+export interface NoteView {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  /** "user" veya "agent" — kullanıcı kendi yazdığını ayırt edebilmelidir. */
+  created_by: string;
+}
+
 /** GET yardımcı: hata mesajını tek yerde çözer. */
 async function getJson<T>(path: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`);
+  } catch {
+    throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
+  }
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return response.json() as Promise<T>;
+}
+
+/** Gövdeli istek yardımcısı (POST/PUT). */
+async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   } catch {
     throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
   }
@@ -278,5 +304,35 @@ export const apiClient = {
   /** Etkileşim istatistikleri. */
   async getUserStats() {
     return getJson<InteractionStats>('/user/stats');
+  },
+
+  /** Notları listeler; sorgu verilirse arar. */
+  async getNotes(query = '') {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set('query', query.trim());
+    return getJson<{ notes: NoteView[]; count: number }>(
+      `/notes${params.toString() ? `?${params}` : ''}`,
+    );
+  },
+
+  /** Yeni bir not kaydeder. */
+  async createNote(content: string, title = ''): Promise<NoteView> {
+    return sendJson<NoteView>('/notes', 'POST', { content, title });
+  },
+
+  /** Var olan bir notu günceller. */
+  async updateNote(id: string, content: string, title = ''): Promise<NoteView> {
+    return sendJson<NoteView>(`/notes/${id}`, 'PUT', { content, title });
+  },
+
+  /** Bir notu kalıcı olarak siler. */
+  async deleteNote(id: string): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/notes/${id}`, { method: 'DELETE' });
+    } catch {
+      throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
+    }
+    if (!response.ok) throw new Error(await errorMessage(response));
   },
 };

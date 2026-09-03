@@ -33,6 +33,7 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { label: 'Sohbet', path: 'M4.5 6.5a2.5 2.5 0 012.5-2.5h10a2.5 2.5 0 012.5 2.5v6a2.5 2.5 0 01-2.5 2.5H9l-4.5 3.5z' },
+  { label: 'Notlar', path: 'M7 4.5h7l4 4v11H7zM14 4.5V9h4M9.5 13h6M9.5 16h4' },
   { label: 'Bellek', path: 'M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3zM9 9.5h6' },
   { label: 'Deneyimler', path: 'M12 3.8l7 3.4v6.2c0 3.2-3 5.4-7 6.8-4-1.4-7-3.6-7-6.8V7.2z' },
   { label: 'Öğrendiklerim', path: 'M12 3.6l7.2 8.4L12 20.4 4.8 12z' },
@@ -55,16 +56,12 @@ export interface ShortcutItem extends IconItem {
 }
 
 /**
- * Kısayollar.
- *
- * Notlar ve Takvim henüz BACKEND'DE YOK. Onları da bir ekran açıyormuş gibi
- * göstermek yerine sohbete bir istek yazdırıyorlar: Jarvis o isteği elindeki
- * araçlarla karşılayabildiği kadar karşılar. Var olmayan bir ekranı açan bir
- * düğme, kırık bir düğmedir.
+ * Kısayollar. Hepsi var olan bir ekran açar — bir düğme, açacak bir şeyi
+ * olduğu için vardır.
  */
 export const SHORTCUTS: ShortcutItem[] = [
-  { label: 'Bellek', path: 'M7 4.5h7l4 4v11H7zM14 4.5V9h4', section: 'Bellek' },
-  { label: 'Deneyim', path: 'M5 7h14v12H5zM8 4.5V8M16 4.5V8M5 11h14', section: 'Deneyimler' },
+  { label: 'Notlar', path: 'M7 4.5h7l4 4v11H7zM14 4.5V9h4', section: 'Notlar' },
+  { label: 'Bellek', path: 'M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3zM9 9.5h6', section: 'Bellek' },
   {
     label: 'Ajan',
     path: 'M5 6.5h14v13H5zM8.5 12.5l2.5 2.5 4.5-5',

@@ -13,6 +13,9 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Sohbet akışı (Ollama üzerinden) | Çalışıyor |
 | Kalıcı bellek (episodic / semantic / experience, SQLite) | Çalışıyor |
 | Öğrenme ve kullanıcı modeli | Çalışıyor |
+| Kimlik doğrulama (ağa açıldığında zorunlu) | Çalışıyor |
+| Kalıcı notlar (kullanıcı + ajan) | Çalışıyor |
+| Araştırma / web erişimi | Çalışıyor, **varsayılan kapalı** |
 | Ajan karar katmanı (bağlam → politika → runner) | Çalışıyor |
 | Kodlama döngüsü (planla → uygula → doğrula → düzelt) | Çalışıyor, **varsayılan kapalı** |
 | LLM Council (çok modelli müzakere, üye başına anahtar) | Çalışıyor, **varsayılan kapalı** |
@@ -165,6 +168,55 @@ silmek için ayrı bir düğme vardır.
 JARVIS_ADMIN_TOKEN=uzun-ve-rastgele-bir-deger
 ```
 
+## Kimlik doğrulama
+
+Kural tek cümleyle: **sunucu yerel adres dışına bağlıysa anahtar zorunludur.**
+
+| Bağlı adres | Anahtar | Sonuç |
+|---|---|---|
+| `127.0.0.1` | yok | Serbest (tek kullanıcılı makine) |
+| `127.0.0.1` | var | Anahtar istenir |
+| `0.0.0.0` vb. | yok | **Her istek reddedilir** |
+| `0.0.0.0` vb. | var | Anahtar istenir |
+
+```dotenv
+JARVIS_API_TOKEN=uzun-ve-rastgele-bir-deger
+```
+
+Anahtar `X-Jarvis-Token` başlığıyla ya da `Authorization: Bearer` ile gönderilir.
+Yalnızca sağlık ucu muaftır; o uç hiçbir kullanıcı verisi döndürmez.
+
+Üçüncü satır bilinçlidir: sunucuyu ağa açmak tek bir ayardır ve onu değiştiren
+kişi kimlik katmanının da gerektiğini fark etmeyebilir. Uygulamayı açılışta
+reddettirmek yerine her isteği reddetmek, sebebi loglarda değil isteği yapanın
+elinde gösterir.
+
+## Notlar ve araştırma
+
+**Notlar** kullanıcının ve ajanın paylaştığı kalıcı yüzeydir; bellekten ayrıdır
+ve birleştirilmemelidir. Bellek Jarvis'in *çıkardığı* bilgidir ve kendiliğinden
+eskir; not *bilerek yazılmış* bir metindir. Ajanın yazdığı notlar panelde
+"Jarvis yazdı" etiketiyle görünür ve ajanın **silme aracı yoktur** — silme
+kullanıcının kararıdır.
+
+```dotenv
+JARVIS_NOTES_ENABLED=true
+JARVIS_NOTES_WRITABLE=true   # ajan yazabilsin mi (her yazma yine onaydan geçer)
+```
+
+**Araştırma** ajanın bir şeye bakabilmesidir (kriter 5). Varsayılan kapalıdır
+ve açık olsa bile her getirme onaydan geçer:
+
+```dotenv
+JARVIS_RESEARCH_ENABLED=true
+JARVIS_RESEARCH_ALLOWED_DOMAINS=["docs.python.org","developer.mozilla.org"]
+```
+
+Özel ağ adresleri **hiçbir koşulda** getirilemez. Sebebi bir URL'nin dışarıyı
+değil içeriyi de gösterebilmesidir: `169.254.169.254` bulut sağlayıcısının
+kimlik sunucusu, `127.0.0.1:8000/api/admin/llm` ise uygulamanın kendi yönetim
+ucudur. Kontrol ada değil **çözülen adrese** bakar ve yönlendirmeler izlenmez.
+
 ## Ajan yeteneklerini açma
 
 Hepsi `.env` üzerinden ve hepsi varsayılan kapalı:
@@ -267,8 +319,10 @@ curl -X PUT localhost:8000/api/admin/council/members/uzak-model \
 - `GET  /api/admin/llm` — sağlayıcı yapılandırması (anahtar hariç)
 - `PUT  /api/admin/llm` — sağlayıcıyı değiştirir ve hemen devreye alır
 
-> Bu uçlarda **kimlik doğrulama yoktur**, çünkü uygulamada henüz bir kimlik katmanı yok.
-> Sunucu `127.0.0.1` dışına açılmadan önce eklenmelidir.
+> Bütün uçlar `JARVIS_API_TOKEN` ile korunur; sunucu yerel adres dışına bağlıysa
+> anahtar zorunludur. Yönetim uçları ayrıca `JARVIS_ADMIN_TOKEN` isteyebilir —
+> "bu sunucuya erişebilir misin" ile "sağlayıcıyı değiştirebilir misin" ayrı
+> sorulardır ve cevapları aynı kişide olmak zorunda değildir.
 
 ## Yapılandırma
 

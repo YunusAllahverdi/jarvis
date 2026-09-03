@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdminPanel } from './AdminPanel';
 import { CodingPanel } from './CodingPanel';
 import { InsightPanel, type InsightSection } from './InsightPanel';
+import { NotesPanel } from './NotesPanel';
+import { useDictation } from './useDictation';
 import { useSpeech } from './useSpeech';
 import { OrbEngine, type OrbMode } from './orb/OrbEngine';
 import { apiClient, type ExperienceView, type SystemStatus } from '../api/client';
@@ -47,6 +49,7 @@ export const JarvisShell = () => {
   const [adminOpen, setAdminOpen] = useState(false);
   const [codingOpen, setCodingOpen] = useState(false);
   const [insight, setInsight] = useState<InsightSection | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -60,6 +63,10 @@ export const JarvisShell = () => {
   const [activities, setActivities] = useState<ExperienceView[]>([]);
 
   const speech = useSpeech();
+  // Tanınan metin GİRİŞE yazılır, gönderilmez: tanıma hata yapar ve yanlış
+  // anlaşılmış bir cümlenin doğrudan ajana gitmesi, kullanıcının yazmadığı
+  // bir isteği çalıştırmak olurdu.
+  const dictation = useDictation(useCallback((text: string) => setInput(text), []));
 
   /* ── orb motoru ───────────────────────────────────────── */
 
@@ -165,10 +172,15 @@ export const JarvisShell = () => {
   const openNav = useCallback((label: string) => {
     setNav(label);
     setCodingOpen(false);
+    setNotesOpen(false);
     setInsight(null);
 
     if (label === 'Ajanlar') {
       setCodingOpen(true);
+      return;
+    }
+    if (label === 'Notlar') {
+      setNotesOpen(true);
       return;
     }
     if (label !== 'Sohbet') setInsight(label as InsightSection);
@@ -385,9 +397,11 @@ export const JarvisShell = () => {
               </svg>
             </button>
           )}
-          <div
-            onClick={toggleMic}
+          {/* Mikrofon: orb'un ses görselleştirmesi. */}
+          <button
+            onClick={() => void toggleMic()}
             title={micLabel}
+            aria-label={micLabel}
             style={{
               width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
               background: micOn ? 'rgba(124,92,255,0.28)' : 'rgba(14,13,32,0.6)',
@@ -399,7 +413,35 @@ export const JarvisShell = () => {
               <rect x="9.2" y="3.2" width="5.6" height="10.4" rx="2.8" />
               <path d="M5.6 11.4a6.4 6.4 0 0012.8 0M12 17.8V21" />
             </svg>
-          </div>
+          </button>
+
+          {/* Sesli komut — BAS-KONUŞ. Sürekli dinleyen bir uyandırma kelimesi
+              tarayıcıda pratik değil: sekme önde olmalı, izin her oturumda
+              yenileniyor ve ses Google'ın sunucularına gidiyor. Bas-konuş,
+              kullanıcının ne zaman dinlendiğini bildiği tek biçim. */}
+          {dictation.supported && (
+            <button
+              onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+              title={
+                dictation.error
+                  ?? (dictation.listening ? 'Dinlemeyi bitir' : 'Konuşarak yaz (bas-konuş)')
+              }
+              aria-label={dictation.listening ? 'Dinlemeyi bitir' : 'Konuşarak yaz'}
+              aria-pressed={dictation.listening}
+              style={{
+                width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
+                background: dictation.listening ? 'rgba(241,121,143,0.26)' : 'rgba(14,13,32,0.6)',
+                border: `1px solid ${dictation.listening ? 'rgba(241,121,143,0.6)' : 'rgba(140,150,255,0.12)'}`,
+                color: dictation.listening ? '#ffd9e1' : '#aab4e8',
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <path d="M12 3.5v9M8.5 7l3.5-3.5L15.5 7" />
+                <path d="M5 13a7 7 0 0014 0" />
+                <path d="M12 20v1.5" />
+              </svg>
+            </button>
+          )}
           <div
             onClick={cycleMode}
             style={{ width: 40, height: 40, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgba(124,92,255,0.30)', border: '1px solid rgba(170,150,255,0.55)', boxShadow: '0 0 22px 4px rgba(124,92,255,0.35)', cursor: 'pointer' }}
@@ -609,6 +651,7 @@ export const JarvisShell = () => {
         {insight && (
           <InsightPanel section={insight} onClose={() => setInsight(null)} />
         )}
+        {notesOpen && <NotesPanel onClose={() => setNotesOpen(false)} />}
       </div>
     </div>
   );
