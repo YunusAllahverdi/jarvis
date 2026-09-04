@@ -1,698 +1,759 @@
+/**
+ * Jarvis Shell — yeni tasarım
+ *
+ * Felsefe:
+ * - Başlangıçta boş ekran: sadece hafif arka plan ışığı, altta yazı kutusu
+ * - Mesaj gelince sohbet listesi yukarı doğru açılır (slide-up)
+ * - Orb sağ altta, her zaman canlı, küçük ama var
+ * - Sol menü yok — Jarvis'e söyleyince panel açılır
+ * - Hover → parlar, tıklamaya gerek yok
+ * - Markdown render
+ * - Cowork modu ayrı sayfa
+ * - iPhone 16 Pro Max + iPad Pro 12.9 responsive
+ */
+
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AdminPanel } from './AdminPanel';
-import { CodingPanel } from './CodingPanel';
-import { InsightPanel, type InsightSection } from './InsightPanel';
-import { NotesPanel } from './NotesPanel';
-import { useDictation } from './useDictation';
-import { useSpeech } from './useSpeech';
 import { OrbEngine, type OrbMode } from './orb/OrbEngine';
-import { apiClient, type ExperienceView, type SystemStatus } from '../api/client';
-import {
-  MODE_LABELS,
-  NAV,
-  SHORTCUTS,
-  SUGGESTIONS,
-  THEMES,
-  THEME_NAMES,
-  type ThemeName,
-} from './data';
+import { Markdown } from './Markdown';
+import { AdminPanel } from './AdminPanel';
+import { NotesPanel } from './NotesPanel';
+import { InsightPanel, type InsightSection } from './InsightPanel';
+import { CodingPanel } from './CodingPanel';
+import { CoworkMode } from './CoworkMode';
+import { useSpeech } from './useSpeech';
+import { useDictation } from './useDictation';
+import { apiClient } from '../api/client';
 
-/* Tasarım sabit 1536×1024 bir sahne için çizildi; sahne pencereye
- * ölçeklenerek oturtuluyor, böylece yerleşim her ekranda aynı kalıyor. */
-const STAGE_W = 1536;
-const STAGE_H = 1024;
-
-const PANEL: React.CSSProperties = {
-  borderRadius: 15,
-  background: 'rgba(14,13,32,0.55)',
-  border: '1px solid rgba(140,150,255,0.12)',
-  backdropFilter: 'blur(18px)',
-};
-
-const MONO = "'JetBrains Mono', ui-monospace, monospace";
-
-interface Turn {
+interface Message {
+  id: number;
   role: 'user' | 'jarvis';
   text: string;
+  ts: number;
+}
+
+let msgId = 0;
+const nextId = () => ++msgId;
+
+// Arka plan partikülleri — hafif hareketli ışık noktaları
+interface Particle { x: number; y: number; vx: number; vy: number; r: number; alpha: number; }
+
+function makeParticles(n: number): Particle[] {
+  return Array.from({ length: n }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    vx: (Math.random() - 0.5) * 0.00012,
+    vy: (Math.random() - 0.5) * 0.00012,
+    r: 1 + Math.random() * 2,
+    alpha: 0.08 + Math.random() * 0.18,
+  }));
 }
 
 export const JarvisShell = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const barsRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  // ── refs ───────────────────────────────────────────────────────────────
+  const orbRef    = useRef<HTMLCanvasElement>(null);
+  const bgRef     = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<OrbEngine | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef  = useRef<HTMLTextAreaElement>(null);
+  const rafRef    = useRef<number>(0);
+  const particlesRef = useRef<Particle[]>(makeParticles(55));
 
-  const [mode, setMode] = useState<OrbMode>('idle');
-  const [theme, setTheme] = useState<ThemeName>('Gezegen');
-  const [nav, setNav] = useState('Sohbet');
-  const [micOn, setMicOn] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [codingOpen, setCodingOpen] = useState(false);
-  const [insight, setInsight] = useState<InsightSection | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
-
-  const [input, setInput] = useState('');
+  // ── state ──────────────────────────────────────────────────────────────
+  const [mode, setMode]         = useState<OrbMode>('idle');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput]       = useState('');
+  const [busy, setBusy]         = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [turn, setTurn] = useState<Turn | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string>(MODE_LABELS.idle);
+  const [chatOpen, setChatOpen] = useState(false); // sohbet açık mı
+  const [micOn, setMicOn]       = useState(false);
 
-  /* Sabit örneklerin yerini alan gerçek veriler. Okunamazlarsa null kalır
-   * ve ilgili panel "—" gösterir; uydurma bir değer ASLA konmaz. */
-  const [system, setSystem] = useState<SystemStatus | null>(null);
-  const [activities, setActivities] = useState<ExperienceView[]>([]);
+  // Paneller
+  const [adminOpen, setAdminOpen]   = useState(false);
+  const [notesOpen, setNotesOpen]   = useState(false);
+  const [codingOpen, setCodingOpen] = useState(false);
+  const [insight, setInsight]       = useState<InsightSection | null>(null);
+  const [coworkMode, setCoworkMode] = useState(false);
+
+  // Transcript gösterimi (sesli konuşurken arka planda)
+  const [liveTranscript, setLiveTranscript] = useState('');
 
   const speech = useSpeech();
-  // Tanınan metin GİRİŞE yazılır, gönderilmez: tanıma hata yapar ve yanlış
-  // anlaşılmış bir cümlenin doğrudan ajana gitmesi, kullanıcının yazmadığı
-  // bir isteği çalıştırmak olurdu.
-  const dictation = useDictation(useCallback((text: string) => setInput(text), []));
 
-  /* ── orb motoru ───────────────────────────────────────── */
+  // Dictation: transcript input'a yaz, ekranda küçük göster
+  const dictation = useDictation(useCallback((text: string) => {
+    setInput(text);
+    setLiveTranscript(text);
+    setTimeout(() => setLiveTranscript(''), 2500);
+  }, []));
 
+  // ── arka plan partikülleri ─────────────────────────────────────────────
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const engine = new OrbEngine(canvas, barsRef.current);
-    engineRef.current = engine;
-    engine.start();
-    return () => {
-      engine.destroy();
-      engineRef.current = null;
+    const cv = bgRef.current;
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+
+    const resize = () => {
+      cv.width  = window.innerWidth;
+      cv.height = window.innerHeight;
     };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const draw = () => {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const pts = particlesRef.current;
+
+      // Hafif bağlantı çizgileri
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = (pts[i].x - pts[j].x) * cv.width;
+          const dy = (pts[i].y - pts[j].y) * cv.height;
+          const d  = Math.sqrt(dx * dx + dy * dy);
+          if (d < 110) {
+            ctx.beginPath();
+            ctx.moveTo(pts[i].x * cv.width, pts[i].y * cv.height);
+            ctx.lineTo(pts[j].x * cv.width, pts[j].y * cv.height);
+            ctx.strokeStyle = `rgba(100,110,255,${0.04 * (1 - d / 110)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Partiküller
+      for (const p of pts) {
+        ctx.beginPath();
+        ctx.arc(p.x * cv.width, p.y * cv.height, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(140,150,255,${p.alpha})`;
+        ctx.fill();
+
+        // Hareket
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = 1;
+        if (p.x > 1) p.x = 0;
+        if (p.y < 0) p.y = 1;
+        if (p.y > 1) p.y = 0;
+      }
+
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // ── orb başlat ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const cv = orbRef.current;
+    if (!cv) return;
+    const eng = new OrbEngine(cv);
+    engineRef.current = eng;
+    eng.start();
+    return () => { eng.destroy(); engineRef.current = null; };
   }, []);
 
   useEffect(() => { engineRef.current?.setMode(mode); }, [mode]);
-  useEffect(() => { engineRef.current?.setTheme(theme); }, [theme]);
 
-  /* Sahneyi pencereye sığdır. */
+  // ── mesaj sonu scroll ──────────────────────────────────────────────────
   useEffect(() => {
-    const fit = () => {
-      const st = stageRef.current;
-      if (!st) return;
-      const s = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
-      st.style.transform = `translate(-50%, -50%) scale(${s.toFixed(4)})`;
-    };
-    fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
-  }, []);
-
-  /* ── canlı veriler ────────────────────────────────────── */
-
-  /* Sistem durumu düzenli olarak tazelenir; anlık bir ölçüm tek seferlik
-   * gösterildiğinde panel dakikalar önceki değeri gösterirdi. Hata sessizce
-   * yutulur: kaynak okunamıyorsa panel "—" gösterir, sohbet etkilenmez. */
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      apiClient
-        .getSystemStatus()
-        .then((value) => { if (!cancelled) setSystem(value); })
-        .catch(() => { if (!cancelled) setSystem(null); });
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 10_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, []);
-
-  /* Ajanın açmasını istediği panelleri uygular.
-   *
-   * Yalnızca sohbet turundan SONRA yoklanır, arka planda sürekli değil:
-   * aksiyonlar yalnızca ajan bir tur çalıştırdığında oluşur, dolayısıyla
-   * yoklanacak an bellidir ve saniyede bir sormak boşuna istek üretirdi.
-   *
-   * Birden fazla aksiyon varsa SONUNCUSU uygulanır: paneller tek tek
-   * açılıyor ve hepsini açmak, kullanıcının önüne üst üste pencere
-   * yığmak olurdu. Sonuncusu, ajanın en son niyetidir. */
-  const applyAgentPanels = useCallback(async (activeSessionId: string | null) => {
-    let actions;
-    try {
-      actions = (await apiClient.consumeUiActions(activeSessionId)).actions;
-    } catch {
-      // Kanal bağlı değilse veya okunamıyorsa sohbet etkilenmez.
-      return;
+    if (chatOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-    const last = actions.at(-1);
-    if (!last) return;
+  }, [messages, chatOpen]);
 
-    setCodingOpen(false);
-    setNotesOpen(false);
-    setInsight(null);
+  // ── agent panel açma ───────────────────────────────────────────────────
+  const applyAgentPanels = useCallback(async (sid: string | null) => {
+    try {
+      const { actions } = await apiClient.consumeUiActions(sid);
+      const last = actions.at(-1);
+      if (!last) return;
 
-    const SECTIONS: Record<string, InsightSection> = {
-      memory: 'Bellek',
-      experiences: 'Deneyimler',
-      traits: 'Öğrendiklerim',
-      user_model: 'Benim Modelim',
-      system: 'Sistem',
-    };
+      setNotesOpen(false);
+      setCodingOpen(false);
+      setInsight(null);
 
-    if (last.panel === 'notes') { setNav('Notlar'); setNotesOpen(true); return; }
-    if (last.panel === 'coding') { setNav('Ajanlar'); setCodingOpen(true); return; }
-    const section = SECTIONS[last.panel];
-    if (section) { setNav(section); setInsight(section); }
+      const SECTIONS: Record<string, InsightSection> = {
+        memory: 'Bellek', experiences: 'Deneyimler',
+        traits: 'Öğrendiklerim', user_model: 'Benim Modelim', system: 'Sistem',
+      };
+
+      if (last.panel === 'notes')  { setNotesOpen(true); return; }
+      if (last.panel === 'coding') { setCodingOpen(true); return; }
+      const sec = SECTIONS[last.panel];
+      if (sec) setInsight(sec);
+    } catch { /* sohbet etkilenmez */ }
   }, []);
 
-  const refreshActivities = useCallback(() => {
-    apiClient
-      .getExperiences(3)
-      .then((value) => setActivities(value.experiences))
-      .catch(() => setActivities([]));
-  }, []);
-
-  useEffect(() => { refreshActivities(); }, [refreshActivities]);
-
-  /* ── chat ─────────────────────────────────────────────── */
-
+  // ── mesaj gönder ───────────────────────────────────────────────────────
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || busy) return;
 
     setInput('');
     setBusy(true);
-    setTurn({ role: 'user', text });
-    setStatus(MODE_LABELS.thinking);
+    setChatOpen(true);
     setMode('listening');
+
+    const userMsg: Message = { id: nextId(), role: 'user', text, ts: Date.now() };
+    setMessages(prev => [...prev, userMsg]);
 
     try {
       const res = await apiClient.chat(text, sessionId);
       if (res.session_id) setSessionId(res.session_id);
-      setTurn({ role: 'jarvis', text: res.response });
-      setStatus(MODE_LABELS.speaking);
+
+      const jarvisMsg: Message = { id: nextId(), role: 'jarvis', text: res.response, ts: Date.now() };
+      setMessages(prev => [...prev, jarvisMsg]);
+
       setMode('speaking');
-      // Ses kapalıysa bu çağrı hiçbir şey yapmaz; kontrol hook'un içindedir.
       speech.speak(res.response);
-      // Bu tur bir deneyim ürettiyse aktivite listesi artık eskimiştir.
-      refreshActivities();
-      // Ajan bu turda bir panel açmak istediyse şimdi uygulanır.
       void applyAgentPanels(res.session_id ?? sessionId);
-      // Cevap uzunluğuna göre "konuşma" süresi; sonra dinlenmeye dön.
-      const dwell = Math.min(Math.max(res.response.length * 40, 2000), 7000);
-      window.setTimeout(() => {
-        setMode('idle');
-        setStatus(MODE_LABELS.idle);
-      }, dwell);
+
+      const dwell = Math.min(Math.max(res.response.length * 35, 2000), 6000);
+      setTimeout(() => { setMode('idle'); }, dwell);
     } catch (err) {
-      const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
-      setTurn({ role: 'jarvis', text: `Bağlantı kurulamadı: ${detail}` });
-      setStatus(MODE_LABELS.error);
+      const detail = err instanceof Error ? err.message : 'Hata oluştu';
+      setMessages(prev => [...prev, {
+        id: nextId(), role: 'jarvis',
+        text: `Bağlantı kurulamadı: ${detail}`,
+        ts: Date.now(),
+      }]);
       setMode('idle');
     } finally {
       setBusy(false);
     }
-  }, [input, busy, sessionId, speech, refreshActivities, applyAgentPanels]);
-
-  /* Gezinme: her başlık artık gerçekten bir şey açar.
-   *
-   * "Sohbet" bir ekran açmaz çünkü sohbet zaten kabuğun kendisidir; onu bir
-   * pencerenin içine koymak, ana yüzeyi ikinci plana atmak olurdu. Açık bir
-   * panel varsa kapatılır — böylece "Sohbet" her zaman kabuğa dönüş anlamına
-   * gelir. */
-  const openNav = useCallback((label: string) => {
-    setNav(label);
-    setCodingOpen(false);
-    setNotesOpen(false);
-    setInsight(null);
-
-    if (label === 'Ajanlar') {
-      setCodingOpen(true);
-      return;
-    }
-    if (label === 'Notlar') {
-      setNotesOpen(true);
-      return;
-    }
-    if (label !== 'Sohbet') setInsight(label as InsightSection);
-  }, []);
+  }, [input, busy, sessionId, speech, applyAgentPanels]);
 
   const toggleMic = useCallback(async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    const ok = await engine.enableMic();
+    const eng = engineRef.current;
+    if (!eng) return;
+    const ok = await eng.enableMic();
     setMicOn(ok);
   }, []);
 
-  const cycleMode = useCallback(() => {
-    const order: OrbMode[] = ['idle', 'listening', 'speaking'];
-    setMode((m) => {
-      const next = order[(order.indexOf(m) + 1) % order.length];
-      setStatus(MODE_LABELS[next]);
-      return next;
-    });
-  }, []);
+  // Cowork moduna geç
+  if (coworkMode) {
+    return <CoworkMode onExit={() => setCoworkMode(false)} />;
+  }
 
-  const micLabel = micOn
-    ? 'Mikrofon açık'
-    : engineRef.current?.isMicDenied()
-      ? 'Mikrofon reddedildi'
-      : 'Mikrofonu aç';
-
-  /* ── görünüm ──────────────────────────────────────────── */
+  const hasMessages = messages.length > 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', background: '#04030c', overflow: 'hidden' }}>
-      <div
-        ref={stageRef}
-        style={{
-          position: 'absolute', top: '50%', left: '50%',
-          width: STAGE_W, height: STAGE_H,
-          transform: 'translate(-50%, -50%)', transformOrigin: 'center center',
-          background: '#04030c',
-          fontFamily: 'Sora, Helvetica, sans-serif',
-          color: '#e6e8ff', overflow: 'hidden',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          onClick={cycleMode}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', cursor: 'pointer' }}
-        />
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: '#06050f',
+      overflow: 'hidden',
+      fontFamily: 'Sora, Helvetica, sans-serif',
+      color: '#e0e4ff',
+    }}>
+      {/* ── arka plan: hareketli partiküller ── */}
+      <canvas
+        ref={bgRef}
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}
+      />
 
-        {/* kenarları karartan vinyet */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'radial-gradient(120% 90% at 50% 45%, rgba(4,3,12,0) 40%, rgba(4,3,12,0.55) 100%)',
-        }} />
-
-        {/* ── marka ── */}
-        <div style={{ position: 'absolute', top: 30, left: 34, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 11, height: 11, borderRadius: '50%', background: '#a78bfa', boxShadow: '0 0 14px 4px rgba(167,139,250,0.7)' }} />
-          <div style={{ fontSize: 13, letterSpacing: '0.42em', fontWeight: 500, color: '#dfe2ff' }}>JARVIS</div>
+      {/* ── üst bar ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        height: 56, zIndex: 10,
+        display: 'flex', alignItems: 'center', padding: '0 20px',
+        gap: 12,
+      }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: '#8878ff',
+            boxShadow: '0 0 10px 3px rgba(136,120,255,0.6)',
+          }} />
+          <span style={{ fontSize: 11, letterSpacing: '0.4em', color: '#9ba4d4', fontWeight: 500 }}>
+            JARVIS
+          </span>
         </div>
 
-        {/* ── sağ üst ── */}
-        <div style={{ position: 'absolute', top: 26, right: 30, display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 16, opacity: 0.65 }}>
-            {[5, 9, 16, 9, 5].map((h, i) => (
-              <div key={i} style={{ width: 2, height: h, background: h === 16 ? '#c9d3ff' : '#8fa2ff' }} />
-            ))}
-          </div>
-          <button
-            onClick={() => setAdminOpen(true)}
-            aria-label="Sağlayıcı ayarları"
-            style={{
-              width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
-              cursor: 'pointer', color: '#aab4e8', background: 'transparent', border: 'none',
-            }}
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8.4" />
-            </svg>
-          </button>
-        </div>
+        <div style={{ flex: 1 }} />
 
-        {/* ── sol: arama + gezinme ── */}
-        <div style={{ position: 'absolute', top: 88, left: 22, width: 224, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Arama kutusu belleği açar; daha önce hiçbir şeye bağlı değildi. */}
-          <button
-            onClick={() => openNav('Bellek')}
-            aria-label="Bellekte ara"
-            title="Bellekte ara"
-            style={{ ...PANEL, borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', height: 44, color: '#94a0d8', cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <rect x="3.5" y="4.5" width="17" height="13" rx="3.5" /><path d="M8 20.5l3-3" />
-            </svg>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" />
-            </svg>
-          </button>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 0' }}>
-            {NAV.map((item) => {
-              const active = nav === item.label;
-              return (
-                <div
-                  key={item.label}
-                  onClick={() => openNav(item.label)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, height: 44,
-                    padding: '0 14px', borderRadius: 12, cursor: 'pointer', transition: 'background .18s',
-                    background: active ? 'rgba(112,92,255,0.20)' : undefined,
-                    border: active ? '1px solid rgba(150,130,255,0.32)' : '1px solid transparent',
-                    color: active ? '#cfc4ff' : '#9aa4cc',
-                  }}
-                >
-                  <div style={{ width: 18, height: 18, display: 'grid', placeItems: 'center' }}>
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round">
-                      <path d={item.path} />
-                    </svg>
-                  </div>
-                  <div style={{ flex: 1, fontSize: 13.5, fontWeight: 400 }}>{item.label}</div>
-                  {item.badge && (
-                    <div style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, background: 'rgba(140,150,255,0.10)', color: '#8b96c8', fontFamily: MONO }}>
-                      {item.badge}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── sol alt: sistem durumu ──
-            Değerler artık ölçülüyor (/api/system/status, 10 saniyede bir).
-            Okunamıyorsa "—" gösterilir; uydurma bir sayı ASLA konmaz. */}
-        <div
-          onClick={() => openNav('Sistem')}
-          style={{ ...PANEL, position: 'absolute', left: 22, bottom: 96, width: 224, padding: '16px 16px 14px', cursor: 'pointer' }}
+        {/* Cowork butonu */}
+        <TopButton
+          title="Cowork Modu"
+          onClick={() => setCoworkMode(true)}
         >
-          <div style={{ fontSize: 12.5, fontWeight: 500, color: '#dfe2ff' }}>Sistem Durumu</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 9 }}>
-            <div style={{
-              width: 7, height: 7, borderRadius: '50%',
-              background: system ? '#4ade9b' : '#8b96c8',
-              boxShadow: system ? '0 0 9px 2px rgba(74,222,155,0.45)' : undefined,
-            }} />
-            <div style={{ fontSize: 11.5, color: system ? '#8fd9b6' : '#8b96c8' }}>
-              {system ? (system.is_local ? 'Bu makine' : 'Sunucu') : 'Ölçülemiyor'}
-            </div>
-          </div>
-          <div style={{ height: 1, background: 'rgba(140,150,255,0.10)', margin: '14px 0 12px' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontFamily: MONO, fontSize: 11 }}>
-            {[
-              ['CPU', system ? `${system.cpu_percent.toFixed(0)}%` : '—'],
-              ['Bellek', system ? `${system.memory_percent.toFixed(0)}%` : '—'],
-              ['Disk', system ? `${system.disk_percent.toFixed(0)}%` : '—'],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', color: '#939ec9' }}>
-                <span>{k}</span><span style={{ color: '#d7dcff' }}>{v}</span>
-              </div>
-            ))}
-          </div>
-          {/* Bellek doluluğu. Önceki rastgele çizgi kaldırıldı: ölçüm gibi
-              görünen ama hiçbir şey ölçmeyen bir grafikti. */}
-          <div style={{ marginTop: 14, height: 5, borderRadius: 3, background: 'rgba(140,150,255,0.12)', overflow: 'hidden' }}>
-            <div style={{
-              width: `${system ? Math.min(system.memory_percent, 100) : 0}%`,
-              height: '100%', borderRadius: 3,
-              background: 'linear-gradient(90deg, #7c6cff, #b7c4ff)',
-              transition: 'width .5s ease',
-            }} />
-          </div>
-        </div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <rect x="3" y="3" width="8" height="8" rx="2" />
+            <rect x="13" y="3" width="8" height="8" rx="2" />
+            <rect x="3" y="13" width="8" height="8" rx="2" />
+            <rect x="13" y="13" width="8" height="8" rx="2" />
+          </svg>
+        </TopButton>
 
-        {/* ── sol alt: kontroller ── */}
-        <div style={{ position: 'absolute', left: 22, bottom: 26, display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Sağlayıcı ayarları — daha önce hiçbir şey yapmayan kaydırıcı ikonu. */}
-          <button
-            onClick={() => setAdminOpen(true)}
-            title="Sağlayıcı ayarları"
-            aria-label="Sağlayıcı ayarları"
-            style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(14,13,32,0.6)', border: '1px solid rgba(140,150,255,0.12)', color: '#aab4e8', cursor: 'pointer' }}
+        {/* Sesli cevap */}
+        {speech.supported && (
+          <TopButton
+            title={speech.enabled ? 'Sesi kapat' : 'Sesi aç'}
+            active={speech.enabled}
+            onClick={() => { if (speech.toggle()) speech.speak('Sesli cevap açık.'); }}
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M4 8h16M4 16h16" /><circle cx="9" cy="8" r="2" /><circle cx="15" cy="16" r="2" />
-            </svg>
-          </button>
-
-          {/* Sesli cevap. Tarayıcı desteklemiyorsa düğme hiç çizilmez:
-              basıldığında hiçbir şey yapmayan bir düğme, kırık bir düğmedir. */}
-          {speech.supported && (
-            <button
-              onClick={() => {
-                // Açılışta kısa bir onay: kullanıcı sesin gerçekten çalıştığını
-                // bir cevabı beklemeden duyar. `toggle` yeni durumu döndürdüğü
-                // için burada React state'inin güncellenmesini beklemek gerekmez.
-                if (speech.toggle()) speech.speak('Sesli cevap açık.');
-              }}
-              title={speech.enabled ? 'Sesli cevabı kapat' : 'Sesli cevabı aç'}
-              aria-label={speech.enabled ? 'Sesli cevabı kapat' : 'Sesli cevabı aç'}
-              aria-pressed={speech.enabled}
-              style={{
-                width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
-                background: speech.enabled ? 'rgba(124,92,255,0.28)' : 'rgba(14,13,32,0.6)',
-                border: `1px solid ${speech.enabled ? 'rgba(180,160,255,0.65)' : 'rgba(140,150,255,0.12)'}`,
-                color: speech.enabled ? '#e6e2ff' : '#aab4e8',
-              }}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" />
-                {speech.enabled ? (
-                  <path d="M15.6 9a4.2 4.2 0 010 6M18 6.6a7.6 7.6 0 010 10.8" />
-                ) : (
-                  <path d="M16.5 9.8l4 4.4M20.5 9.8l-4 4.4" />
-                )}
-              </svg>
-            </button>
-          )}
-          {/* Mikrofon: orb'un ses görselleştirmesi. */}
-          <button
-            onClick={() => void toggleMic()}
-            title={micLabel}
-            aria-label={micLabel}
-            style={{
-              width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
-              background: micOn ? 'rgba(124,92,255,0.28)' : 'rgba(14,13,32,0.6)',
-              border: `1px solid ${micOn ? 'rgba(180,160,255,0.65)' : 'rgba(140,150,255,0.12)'}`,
-              color: micOn ? '#e6e2ff' : '#aab4e8',
-            }}
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <rect x="9.2" y="3.2" width="5.6" height="10.4" rx="2.8" />
-              <path d="M5.6 11.4a6.4 6.4 0 0012.8 0M12 17.8V21" />
-            </svg>
-          </button>
-
-          {/* Sesli komut — BAS-KONUŞ. Sürekli dinleyen bir uyandırma kelimesi
-              tarayıcıda pratik değil: sekme önde olmalı, izin her oturumda
-              yenileniyor ve ses Google'ın sunucularına gidiyor. Bas-konuş,
-              kullanıcının ne zaman dinlendiğini bildiği tek biçim. */}
-          {dictation.supported && (
-            <button
-              onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
-              title={
-                dictation.error
-                  ?? (dictation.listening ? 'Dinlemeyi bitir' : 'Konuşarak yaz (bas-konuş)')
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M4 9.5h3L12 5.5v13l-5-4H4z" />
+              {speech.enabled
+                ? <path d="M15 9a4 4 0 010 6M18 6a8 8 0 010 12" />
+                : <path d="M16 9l4 6M20 9l-4 6" />
               }
-              aria-label={dictation.listening ? 'Dinlemeyi bitir' : 'Konuşarak yaz'}
-              aria-pressed={dictation.listening}
-              style={{
-                width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', cursor: 'pointer',
-                background: dictation.listening ? 'rgba(241,121,143,0.26)' : 'rgba(14,13,32,0.6)',
-                border: `1px solid ${dictation.listening ? 'rgba(241,121,143,0.6)' : 'rgba(140,150,255,0.12)'}`,
-                color: dictation.listening ? '#ffd9e1' : '#aab4e8',
-              }}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M12 3.5v9M8.5 7l3.5-3.5L15.5 7" />
-                <path d="M5 13a7 7 0 0014 0" />
-                <path d="M12 20v1.5" />
-              </svg>
-            </button>
-          )}
-          <div
-            onClick={cycleMode}
-            style={{ width: 40, height: 40, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'rgba(124,92,255,0.30)', border: '1px solid rgba(170,150,255,0.55)', boxShadow: '0 0 22px 4px rgba(124,92,255,0.35)', cursor: 'pointer' }}
+            </svg>
+          </TopButton>
+        )}
+
+        {/* Ayarlar */}
+        <TopButton title="Ayarlar" onClick={() => setAdminOpen(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+        </TopButton>
+
+        {/* Sohbet geçmişi toggle */}
+        {hasMessages && (
+          <TopButton
+            title={chatOpen ? 'Sohbeti gizle' : 'Sohbeti göster'}
+            active={chatOpen}
+            onClick={() => setChatOpen(v => !v)}
           >
-            <div style={{ width: 13, height: 13, borderRadius: '50%', background: '#dfe0ff', boxShadow: '0 0 12px 3px rgba(200,190,255,0.8)' }} />
-          </div>
-        </div>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M4.5 6.5a2.5 2.5 0 012.5-2.5h10a2.5 2.5 0 012.5 2.5v6a2.5 2.5 0 01-2.5 2.5H9l-4.5 3.5z" />
+            </svg>
+          </TopButton>
+        )}
+      </div>
 
-        {/* ── üst orta: durum çubuğu ── */}
+      {/* ── orta alan: karşılama veya sohbet ── */}
+      <div style={{
+        position: 'absolute',
+        top: 56,
+        bottom: 110,
+        left: 0, right: 0,
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: chatOpen ? 'flex-end' : 'center',
+        overflow: 'hidden',
+      }}>
+
+        {/* Karşılama metni — sohbet yoksa veya kapalıysa */}
+        {!chatOpen && (
+          <div style={{
+            textAlign: 'center',
+            animation: 'fadeIn 0.6s ease',
+            padding: '0 24px',
+          }}>
+            <div style={{
+              fontSize: 'clamp(22px, 4vw, 38px)',
+              fontWeight: 200,
+              color: 'rgba(220,225,255,0.82)',
+              letterSpacing: '0.01em',
+              marginBottom: 12,
+              textShadow: '0 0 40px rgba(120,110,255,0.35)',
+            }}>
+              {hasMessages
+                ? messages[messages.length - 1].role === 'jarvis'
+                  ? messages[messages.length - 1].text.slice(0, 80) + (messages[messages.length - 1].text.length > 80 ? '…' : '')
+                  : 'Düşünüyorum…'
+                : 'Nasıl yardımcı olabilirim?'
+              }
+            </div>
+            {!hasMessages && (
+              <div style={{ fontSize: 13, color: '#4a4f70', marginTop: 8 }}>
+                Yazmaya başla veya mikrofona bas
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sohbet listesi — açıkken göster */}
+        {chatOpen && (
+          <div style={{
+            width: '100%', maxWidth: 720,
+            flex: 1, overflowY: 'auto',
+            padding: '16px 20px 0',
+            display: 'flex', flexDirection: 'column', gap: 12,
+            animation: 'slideUp 0.3s ease',
+          }}>
+            {messages.map(m => (
+              <MessageBubble key={m.id} msg={m} />
+            ))}
+            {busy && <TypingIndicator />}
+            <div ref={messagesEndRef} style={{ height: 8 }} />
+          </div>
+        )}
+      </div>
+
+      {/* ── live transcript gösterimi (sesli konuşurken) ── */}
+      {liveTranscript && (
         <div style={{
-          ...PANEL, position: 'absolute', top: 30, left: '50%', transform: 'translateX(-50%)',
-          width: 430, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16,
-          borderRadius: 16, border: '1px solid rgba(140,150,255,0.14)',
-          backdropFilter: 'blur(20px)', boxShadow: '0 18px 50px -20px rgba(0,0,0,0.8)',
+          position: 'absolute', bottom: 120, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 20, background: 'rgba(20,18,40,0.85)',
+          border: '1px solid rgba(140,150,255,0.2)',
+          borderRadius: 10, padding: '6px 14px',
+          fontSize: 12, color: '#9ba4d4',
+          backdropFilter: 'blur(10px)',
+          maxWidth: '60%', textAlign: 'center',
+          animation: 'fadeIn 0.2s ease',
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2.5, height: 15, color: '#a5b0ff' }}>
-            {[[6, 0.6], [12, 1], [8, 0.8], [15, 1]].map(([h, o], i) => (
-              <div key={i} style={{ width: 2, height: h, background: 'currentColor', opacity: o }} />
-            ))}
-          </div>
-          <div style={{ fontSize: 13.5, color: '#cfd5ff', whiteSpace: 'nowrap' }}>{status}</div>
-          <div ref={barsRef} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2, height: 30 }}>
-            {Array.from({ length: 54 }, (_, i) => (
-              <div key={i} style={{ width: 2, height: 26, borderRadius: 1, background: 'linear-gradient(180deg, #b7c4ff, #7c6cff)', transform: 'scaleY(0.12)', opacity: 0.5 }} />
-            ))}
-          </div>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#a78bfa', boxShadow: '0 0 10px 3px rgba(167,139,250,0.6)' }} />
+          🎙 {liveTranscript}
         </div>
+      )}
 
-        {/* ── alt orta: konuşma ──
-            Tasarımda burada sabit bir metin vardı; sohbetin çalışabilmesi
-            için son cevabı gösteren bir alan ve bir metin girişi eklendi. */}
-        <div style={{ position: 'absolute', bottom: 118, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', width: 720 }}>
-          <div style={{
-            fontSize: 21, fontWeight: 300, letterSpacing: '0.01em',
-            color: 'rgba(220,225,255,0.86)', textShadow: '0 0 30px rgba(120,110,255,0.5)',
-            minHeight: 62, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 24px', lineHeight: 1.45,
-          }}>
-            {turn ? turn.text : 'Nasıl yardımcı olabilirim?'}
-          </div>
+      {/* ── alt: yazı girişi ── */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        height: 100, zIndex: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 20px 16px',
+      }}>
+        <div style={{
+          width: '100%', maxWidth: 680,
+          display: 'flex', alignItems: 'flex-end', gap: 10,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(140,150,255,0.18)',
+          borderRadius: 18,
+          padding: '10px 10px 10px 18px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          backdropFilter: 'blur(20px)',
+          transition: 'border-color 0.2s, box-shadow 0.2s',
+        }}
+          onFocus={() => {}}
+          // CSS ile hover/focus efekti index.css'te
+        >
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => {
+              setInput(e.target.value);
+              // Auto-resize
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder={busy ? 'Jarvis düşünüyor…' : 'Bir şey sor…'}
+            disabled={busy}
+            rows={1}
+            aria-label="Jarvis'e mesaj"
+            style={{
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: '#dfe2ff', fontSize: 15, fontFamily: 'inherit',
+              resize: 'none', lineHeight: 1.55, overflowY: 'hidden',
+              minHeight: 24, maxHeight: 140,
+            }}
+          />
 
-          <div style={{
-            ...PANEL, display: 'flex', alignItems: 'center', gap: 12,
-            margin: '20px auto 0', width: 520, height: 48, padding: '0 8px 0 18px', borderRadius: 14,
-          }}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void send(); } }}
-              placeholder={busy ? 'Jarvis düşünüyor...' : 'Bir şey sorun'}
-              disabled={busy}
-              aria-label="Jarvis'e mesaj"
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: '#dfe2ff', fontSize: 14, fontFamily: 'inherit',
-              }}
-            />
+          {/* Sağ araçlar */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            {/* Mikrofon — bas-konuş */}
+            {dictation.supported && (
+              <InputBtn
+                title={dictation.listening ? 'Dur' : 'Sesle yaz'}
+                active={dictation.listening}
+                activeColor="rgba(241,121,143,0.25)"
+                activeBorder="rgba(241,121,143,0.5)"
+                onClick={() => dictation.listening ? dictation.stop() : dictation.start()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <rect x="9" y="3" width="6" height="11" rx="3" />
+                  <path d="M5 11a7 7 0 0014 0M12 18v3" />
+                </svg>
+              </InputBtn>
+            )}
+
+            {/* Orb mikrofon (ses görselleştirme) */}
+            <InputBtn
+              title={micOn ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
+              active={micOn}
+              activeColor="rgba(100,80,255,0.25)"
+              activeBorder="rgba(130,110,255,0.5)"
+              onClick={() => void toggleMic()}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M12 2a4 4 0 014 4v4a4 4 0 01-8 0V6a4 4 0 014-4z" />
+                <path d="M6 10a6 6 0 0012 0M12 18v3" />
+              </svg>
+            </InputBtn>
+
+            {/* Gönder */}
             <button
               onClick={() => void send()}
               disabled={busy || !input.trim()}
               aria-label="Gönder"
               style={{
-                width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center',
-                background: input.trim() && !busy ? 'rgba(124,92,255,0.30)' : 'rgba(140,150,255,0.08)',
-                border: '1px solid rgba(170,150,255,0.35)',
+                width: 36, height: 36, borderRadius: 12,
+                background: input.trim() && !busy ? 'rgba(100,80,255,0.35)' : 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(140,150,255,0.25)',
                 color: '#dfe0ff', cursor: input.trim() && !busy ? 'pointer' : 'default',
+                display: 'grid', placeItems: 'center',
+                transition: 'background 0.15s',
+                opacity: busy || !input.trim() ? 0.4 : 1,
               }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <path d="M4 12h15M14 7l5 5-5 5" />
               </svg>
             </button>
           </div>
         </div>
+      </div>
 
-        {/* ── sağ: kısayollar / aktiviteler / öneriler ── */}
-        <div style={{ position: 'absolute', top: 88, right: 22, width: 292, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ ...PANEL, padding: 18 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 500, color: '#dfe2ff', marginBottom: 16 }}>Kısa Yollar</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-              {SHORTCUTS.map((s) => (
-                <button
-                  key={s.label}
-                  onClick={() => s.section ? openNav(s.section) : setInput(s.prompt ?? s.label)}
-                  title={s.section ? `${s.section} ekranını aç` : 'Sohbete yaz'}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                    cursor: 'pointer', background: 'transparent', border: 'none', padding: 0,
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  <div style={{ width: '100%', aspectRatio: '1', borderRadius: 11, display: 'grid', placeItems: 'center', background: 'rgba(140,150,255,0.06)', border: '1px solid rgba(140,150,255,0.14)', color: '#b9c2f0' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round">
-                      <path d={s.path} />
-                    </svg>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: '#8f9ac6' }}>{s.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* ── sağ alt: orb ── */}
+      <div style={{
+        position: 'absolute', bottom: 108, right: 20,
+        zIndex: 5,
+        width: 72, height: 72,
+        filter: 'drop-shadow(0 0 18px rgba(100,80,255,0.4))',
+        cursor: 'pointer',
+        transition: 'transform 0.3s ease',
+      }}
+        title="Orb modu değiştir"
+        onClick={() => {
+          const order: OrbMode[] = ['idle', 'listening', 'speaking'];
+          setMode(m => order[(order.indexOf(m) + 1) % order.length]);
+        }}
+      >
+        <canvas
+          ref={orbRef}
+          style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'block' }}
+        />
+      </div>
 
-          {/* Aktiviteler artık gerçek deneyimlerden geliyor (/api/experiences).
-              Hiç kayıt yoksa bu açıkça söylenir — sahte üç satır göstermek,
-              olmayan bir geçmişi varmış gibi sunmak olurdu. */}
-          <div style={{ ...PANEL, padding: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#dfe2ff' }}>Son Aktiviteler</div>
-              <div style={{ width: 14, height: 1, background: 'rgba(150,150,255,0.4)' }} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {activities.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#8b96c8', lineHeight: 1.6 }}>
-                  Henüz kaydedilmiş bir etkileşim yok.
-                </div>
-              ) : (
-                activities.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', gap: 11 }}>
-                    <div style={{ marginTop: 3, width: 11, height: 11, borderRadius: '50%', border: '1.4px solid rgba(150,140,255,0.75)', display: 'grid', placeItems: 'center', flex: 'none' }}>
-                      <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(190,180,255,0.9)' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: '#9aa4cf', fontFamily: MONO }}>
-                        {new Date(item.occurred_at).toLocaleString('tr-TR')}
-                      </div>
-                      <div style={{
-                        fontSize: 12.5, color: '#d3d8ff', fontWeight: 300,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {item.user_message}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <button
-              onClick={() => openNav('Deneyimler')}
-              style={{
-                marginTop: 18, width: '100%', height: 38, borderRadius: 11,
-                border: '1px solid rgba(140,150,255,0.16)', background: 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-                fontSize: 12, color: '#c3cbf6', cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              <span>Tüm Aktiviteler</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M4 12h15M14 7l5 5-5 5" />
-              </svg>
-            </button>
-          </div>
+      {/* ── paneller ── */}
+      {adminOpen  && <AdminPanel onClose={() => setAdminOpen(false)} />}
+      {notesOpen  && <NotesPanel onClose={() => setNotesOpen(false)} />}
+      {codingOpen && <CodingPanel sessionId={sessionId} onClose={() => setCodingOpen(false)} />}
+      {insight    && <InsightPanel section={insight} onClose={() => setInsight(null)} />}
 
-          <div style={{ ...PANEL, padding: 18 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 500, color: '#dfe2ff', marginBottom: 15 }}>Önerilenler</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {SUGGESTIONS.map((s) => (
-                <div
-                  key={s.label}
-                  onClick={() => setInput(s.label)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer', color: '#aeb7e2' }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round">
-                    <path d={s.path} />
-                  </svg>
-                  <div style={{ fontSize: 12.5, fontWeight: 300 }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* ── animasyonlar ve global stiller ── */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes blink {
+          0%, 80%, 100% { opacity: 0.25; transform: scale(0.75); }
+          40%            { opacity: 1;    transform: scale(1); }
+        }
 
-        {/* ── sağ alt: tema ── */}
-        <div style={{ ...PANEL, position: 'absolute', right: 22, bottom: 26, width: 330, padding: '15px 16px 16px', background: 'rgba(14,13,32,0.6)' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#dfe2ff' }}>Tema</div>
-              <div style={{ fontSize: 11, color: '#8b96c4', marginTop: 3 }}>{theme} · {THEMES[theme].sub}</div>
-            </div>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(160,168,210,0.8)" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M6 14l6-6 6 6" />
-            </svg>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 9, marginTop: 13 }}>
-            {THEME_NAMES.map((name) => (
-              <div key={name} onClick={() => setTheme(name)} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                <div style={{
-                  aspectRatio: '1/0.72', borderRadius: 9, overflow: 'hidden', cursor: 'pointer',
-                  border: `1px solid ${theme === name ? 'rgba(200,190,255,0.85)' : 'rgba(140,150,255,0.16)'}`,
-                }}>
-                  <svg width="100%" height="100%" viewBox="0 0 60 44" preserveAspectRatio="none" style={{ display: 'block' }}>
-                    <rect width="60" height="44" fill={THEMES[name].bg} />
-                    <path d="M-6 44L18 8M8 44L32 8M22 44L46 8M36 44L60 8M50 44L74 8" stroke="rgba(255,255,255,0.09)" strokeWidth="3" />
-                    <circle cx="30" cy="24" r="9" fill="rgba(255,255,255,0.13)" />
-                  </svg>
-                </div>
-                <div style={{ fontSize: 10, textAlign: 'center', color: '#98a2cd' }}>{name}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        /* Markdown stiller */
+        .md { color: #d8dcff; font-size: 13.5px; line-height: 1.7; }
+        .md p { margin: 0 0 8px; }
+        .md p:last-child { margin-bottom: 0; }
+        .md strong { color: #e8ecff; font-weight: 600; }
+        .md em { color: #c8d0f8; font-style: italic; }
+        .md code {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 12.5px;
+          background: rgba(100,110,255,0.14);
+          border: 1px solid rgba(100,110,255,0.2);
+          border-radius: 5px;
+          padding: 1px 6px;
+          color: #b8c4ff;
+        }
+        .md pre {
+          background: rgba(10,9,24,0.8);
+          border: 1px solid rgba(100,110,255,0.18);
+          border-radius: 10px;
+          padding: 14px 16px;
+          overflow-x: auto;
+          margin: 8px 0;
+        }
+        .md pre code {
+          background: none; border: none; padding: 0;
+          font-size: 12.5px; color: #c8d4ff;
+        }
+        .md h1 { font-size: 18px; font-weight: 500; margin: 0 0 10px; color: #eef0ff; }
+        .md h2 { font-size: 15px; font-weight: 500; margin: 0 0 8px; color: #e0e4ff; }
+        .md h3 { font-size: 13.5px; font-weight: 600; margin: 0 0 6px; color: #d8dcff; }
+        .md ul, .md ol { padding-left: 20px; margin: 6px 0; }
+        .md li { margin: 3px 0; }
+        .md blockquote {
+          border-left: 3px solid rgba(100,110,255,0.4);
+          margin: 8px 0; padding: 6px 14px;
+          color: #a0a8d0; font-style: italic;
+          background: rgba(100,110,255,0.06);
+          border-radius: 0 8px 8px 0;
+        }
+        .md hr {
+          border: none;
+          border-top: 1px solid rgba(100,110,255,0.2);
+          margin: 12px 0;
+        }
+        .md a { color: #8ca4ff; text-decoration: underline; text-decoration-color: rgba(140,164,255,0.4); }
+        .md a:hover { color: #b4c8ff; }
 
-        {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
-        {codingOpen && (
-          <CodingPanel sessionId={sessionId} onClose={() => setCodingOpen(false)} />
-        )}
-        {insight && (
-          <InsightPanel section={insight} onClose={() => setInsight(null)} />
-        )}
-        {notesOpen && <NotesPanel onClose={() => setNotesOpen(false)} />}
+        /* Input alanı focus efekti */
+        textarea:focus { outline: none; }
+      `}</style>
+    </div>
+  );
+};
+
+// ── Alt bileşenler ─────────────────────────────────────────────────────────
+
+const MessageBubble = ({ msg }: { msg: Message }) => {
+  const isUser = msg.role === 'user';
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: isUser ? 'row-reverse' : 'row',
+      gap: 10, alignItems: 'flex-end',
+      animation: 'fadeIn 0.25s ease',
+    }}>
+      {/* Avatar */}
+      {!isUser && (
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+          background: 'linear-gradient(135deg, rgba(80,90,255,0.35), rgba(130,80,255,0.35))',
+          border: '1px solid rgba(120,130,255,0.3)',
+          display: 'grid', placeItems: 'center',
+          fontSize: 10, color: '#9ba4d4', fontWeight: 500,
+        }}>J</div>
+      )}
+
+      {/* Baloncuk */}
+      <div style={{
+        maxWidth: 'min(68%, 520px)',
+        padding: isUser ? '9px 14px' : '11px 15px',
+        borderRadius: isUser
+          ? '16px 16px 4px 16px'
+          : '16px 16px 16px 4px',
+        background: isUser
+          ? 'rgba(90,70,255,0.28)'
+          : 'rgba(255,255,255,0.055)',
+        border: `1px solid ${isUser ? 'rgba(110,90,255,0.35)' : 'rgba(255,255,255,0.08)'}`,
+        backdropFilter: 'blur(8px)',
+        fontSize: 13.5, lineHeight: 1.65, color: '#dde1ff',
+        cursor: 'default',
+        transition: 'background 0.15s',
+      }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLDivElement).style.background = isUser
+            ? 'rgba(90,70,255,0.38)'
+            : 'rgba(255,255,255,0.085)';
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLDivElement).style.background = isUser
+            ? 'rgba(90,70,255,0.28)'
+            : 'rgba(255,255,255,0.055)';
+        }}
+      >
+        {msg.role === 'jarvis'
+          ? <Markdown text={msg.text} />
+          : <span>{msg.text}</span>
+        }
       </div>
     </div>
   );
 };
+
+const TypingIndicator = () => (
+  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', animation: 'fadeIn 0.2s ease' }}>
+    <div style={{
+      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+      background: 'linear-gradient(135deg, rgba(80,90,255,0.35), rgba(130,80,255,0.35))',
+      border: '1px solid rgba(120,130,255,0.3)',
+      display: 'grid', placeItems: 'center',
+      fontSize: 10, color: '#9ba4d4',
+    }}>J</div>
+    <div style={{
+      padding: '12px 16px', borderRadius: '16px 16px 16px 4px',
+      background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)',
+      display: 'flex', gap: 5, alignItems: 'center',
+    }}>
+      {[0, 1, 2].map(i => (
+        <div key={i} style={{
+          width: 6, height: 6, borderRadius: '50%', background: '#7c6cff',
+          animation: `blink 1.3s ease-in-out ${i * 0.22}s infinite`,
+        }} />
+      ))}
+    </div>
+  </div>
+);
+
+interface TopButtonProps {
+  title: string;
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+const TopButton = ({ title, active, onClick, children }: TopButtonProps) => (
+  <button
+    title={title}
+    aria-label={title}
+    onClick={onClick}
+    style={{
+      width: 34, height: 34, borderRadius: 9,
+      background: active ? 'rgba(100,80,255,0.22)' : 'transparent',
+      border: `1px solid ${active ? 'rgba(120,100,255,0.4)' : 'rgba(140,150,255,0.10)'}`,
+      color: active ? '#cfc4ff' : '#6870a0',
+      cursor: 'pointer', display: 'grid', placeItems: 'center',
+      transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+    }}
+    onMouseEnter={e => {
+      const b = e.currentTarget;
+      b.style.background = active ? 'rgba(100,80,255,0.32)' : 'rgba(255,255,255,0.06)';
+      b.style.color = '#c0caff';
+      b.style.borderColor = 'rgba(140,150,255,0.25)';
+    }}
+    onMouseLeave={e => {
+      const b = e.currentTarget;
+      b.style.background = active ? 'rgba(100,80,255,0.22)' : 'transparent';
+      b.style.color = active ? '#cfc4ff' : '#6870a0';
+      b.style.borderColor = active ? 'rgba(120,100,255,0.4)' : 'rgba(140,150,255,0.10)';
+    }}
+  >
+    {children}
+  </button>
+);
+
+interface InputBtnProps {
+  title: string;
+  active?: boolean;
+  activeColor?: string;
+  activeBorder?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+const InputBtn = ({ title, active, activeColor, activeBorder, onClick, children }: InputBtnProps) => (
+  <button
+    title={title}
+    aria-label={title}
+    onClick={onClick}
+    style={{
+      width: 34, height: 34, borderRadius: 10,
+      background: active ? (activeColor ?? 'rgba(100,80,255,0.2)') : 'transparent',
+      border: `1px solid ${active ? (activeBorder ?? 'rgba(120,100,255,0.4)') : 'rgba(140,150,255,0.12)'}`,
+      color: active ? '#e8e0ff' : '#5a6090',
+      cursor: 'pointer', display: 'grid', placeItems: 'center',
+      transition: 'background 0.15s, color 0.15s',
+    }}
+    onMouseEnter={e => {
+      const b = e.currentTarget;
+      if (!active) { b.style.background = 'rgba(255,255,255,0.06)'; b.style.color = '#b0baee'; }
+    }}
+    onMouseLeave={e => {
+      const b = e.currentTarget;
+      if (!active) { b.style.background = 'transparent'; b.style.color = '#5a6090'; }
+    }}
+  >
+    {children}
+  </button>
+);
