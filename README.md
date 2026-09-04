@@ -169,6 +169,32 @@ silmek için ayrı bir düğme vardır.
 JARVIS_ADMIN_TOKEN=uzun-ve-rastgele-bir-deger
 ```
 
+## Tabletten kullanma (bilgisayar açık kalır)
+
+Backend derlenmiş kabuğu kendisi sunar, yani **tek bir adres** vardır ve
+tablet ona bağlanır.
+
+```powershell
+# 1) .env dosyasına bir anahtar koyun
+#    JARVIS_API_TOKEN=uzun-ve-rastgele-bir-deger
+
+# 2) Ağa açık başlatın (kabuğu derler ve adresleri yazar)
+.\scripts\serve.ps1 -Network
+```
+
+Script tabletin gireceği adresleri (`http://192.168.x.x:8000`) listeler.
+Tablette anahtar **bir kez** sorulur ve o cihazda saklanır. Safari veya
+Chrome'da "Ana Ekrana Ekle" derseniz Jarvis tam ekran, tarayıcı çerçevesi
+olmadan açılır.
+
+Anahtar tanımlı değilken `-Network` verirseniz script **başlamaz**:
+anahtarsız ağa açılan bir Jarvis, belleğinizi ve dosyalarınızı aynı ağdaki
+herkese açar.
+
+Aynı ağda olmanız gerekir. Bilgisayar uyursa sunucu da durur — güç ayarlarında
+uykuyu kapatmanız gerekebilir. Windows ilk seferde güvenlik duvarı izni
+sorabilir; "özel ağ" için izin verin.
+
 ## Kimlik doğrulama
 
 Kural tek cümleyle: **sunucu yerel adres dışına bağlıysa anahtar zorunludur.**

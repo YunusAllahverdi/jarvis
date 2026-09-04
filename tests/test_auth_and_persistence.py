@@ -54,6 +54,15 @@ def _client(*, token: str = "", host: str = "127.0.0.1") -> TestClient:
     async def _health() -> dict[str, str]:
         return {"status": "ok"}
 
+    # Kabuğu temsil eden, `/api` DIŞINDA yollar.
+    @app.get("/")
+    async def _page() -> dict[str, str]:
+        return {"page": "shell"}
+
+    @app.get("/assets/app.js")
+    async def _asset() -> dict[str, str]:
+        return {"asset": "js"}
+
     return TestClient(app)
 
 
@@ -108,6 +117,26 @@ def test_health_is_always_reachable() -> None:
     """Bir sağlık kontrolü anahtarsız sorabilmeli; o uç veri döndürmez."""
     for client in (_client(), _client(token=_TOKEN), _client(host="0.0.0.0")):
         assert client.get("/api/v1/health").status_code == 200
+
+
+def test_the_page_is_reachable_without_a_token() -> None:
+    """Korunan API'dir, sayfa değil.
+
+    Sayfa da korunsaydı kullanıcı anahtarı GİRECEĞİ ekranı hiç göremezdi ve
+    tabletten bağlanmak imkânsız olurdu. Derlenmiş kabuk herkese açık HTML ve
+    JavaScript'tir; sır taşımaz.
+    """
+    for client in (_client(token=_TOKEN), _client(host="0.0.0.0")):
+        assert client.get("/").status_code == 200
+        assert client.get("/assets/app.js").status_code == 200
+
+
+def test_api_stays_protected_while_the_page_is_open() -> None:
+    """Sayfanın açık olması API'yi açmaz."""
+    client = _client(token=_TOKEN, host="0.0.0.0")
+
+    assert client.get("/").status_code == 200
+    assert client.get("/api/chat").status_code == 401
 
 
 # ---------------------------------------------------------------------------

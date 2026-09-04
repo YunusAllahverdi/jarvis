@@ -25,6 +25,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.insight import router as insight_router
 from app.api.routes.notes import router as notes_router
 from app.api.routes.ui import router as ui_router
+from app.api.static import mount_frontend
 from app.notes.store import NoteStore
 from app.security.network import NetworkGuard
 from app.ui.actions import UIActionBus
@@ -1000,13 +1001,19 @@ def create_app(
     app.include_router(ui_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
-    @app.get("/", response_model=ServiceInfo, tags=["system"])
-    async def root() -> ServiceInfo:
-        return ServiceInfo(
-            name=active_settings.app_name,
-            version=active_settings.app_version,
-            environment=active_settings.environment,
-        )
+    # Kabuk EN SON monte edilir: `/api` router'ları önce eşleşmelidir, aksi
+    # hâlde kök altındaki her yol statik sunucuya gider ve API kaybolurdu.
+    # Monte edilirse kök adresi de o karşılar, bu yüzden `/` uç noktası
+    # yalnızca kabuk YOKKEN tanımlanır.
+    if not mount_frontend(app, active_settings.frontend_dir):
+
+        @app.get("/", response_model=ServiceInfo, tags=["system"])
+        async def root() -> ServiceInfo:
+            return ServiceInfo(
+                name=active_settings.app_name,
+                version=active_settings.app_version,
+                environment=active_settings.environment,
+            )
 
     return app
 

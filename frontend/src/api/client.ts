@@ -1,7 +1,94 @@
 // Backend ile tek temas noktası. Yollar göreli: geliştirmede Vite
-// /api'yi uvicorn'a proxy'liyor, dağıtımda ikisi aynı origin'de olacak.
+// /api'yi uvicorn'a proxy'liyor, dağıtımda backend derlenmiş kabuğu kendisi
+// sunduğu için ikisi zaten aynı origin'de.
 
 const API_BASE = '/api';
+
+/* ── kimlik ────────────────────────────────────────────────
+ *
+ * Sunucu ağa açıldığında (tabletten kullanmak için) anahtar ZORUNLU olur.
+ * Anahtar tarayıcıda `localStorage`'da durur ve HER istekte gönderilir.
+ *
+ * Neden tek bir yerde: her `fetch` çağrısına elle başlık eklemek, yeni bir
+ * uç eklendiğinde unutulacak bir adım demekti — ve unutulduğunda hata
+ * "sunucu 401 döndü" olarak görünüp anahtarın yanlış olduğu sanılırdı.
+ */
+
+const TOKEN_STORAGE_KEY = 'jarvis.api.token';
+
+/** Anahtar değiştiğinde haberdar olmak isteyen dinleyiciler (ör. giriş ekranı). */
+type TokenListener = (token: string) => void;
+const tokenListeners = new Set<TokenListener>();
+
+function readStoredToken(): string {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
+  } catch {
+    // Gizli sekme veya site verisi engellenmiş: erişimin kendisi patlar.
+    return '';
+  }
+}
+
+let apiToken = typeof window === 'undefined' ? '' : readStoredToken();
+
+export function getApiToken(): string {
+  return apiToken;
+}
+
+/** Anahtarı kaydeder; boş dize verilirse siler. */
+export function setApiToken(token: string): void {
+  apiToken = token.trim();
+  try {
+    if (apiToken) window.localStorage.setItem(TOKEN_STORAGE_KEY, apiToken);
+    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Yazılamaması bir hata değildir; anahtar yalnızca kalıcı olmaz.
+  }
+  tokenListeners.forEach((listener) => listener(apiToken));
+}
+
+export function onApiTokenChange(listener: TokenListener): () => void {
+  tokenListeners.add(listener);
+  return () => tokenListeners.delete(listener);
+}
+
+/** İsteğe kimlik başlığını ekler. Anahtar yoksa başlık hiç konmaz. */
+function withAuth(init: RequestInit = {}): RequestInit {
+  if (!apiToken) return init;
+  return {
+    ...init,
+    headers: { ...(init.headers ?? {}), 'X-Jarvis-Token': apiToken },
+  };
+}
+
+/**
+ * Kimlik hatası (401/403) için ayrı bir sınıf.
+ *
+ * Ayrılmasının sebebi arayüzün bunu diğer hatalardan FARKLI karşılaması
+ * gerekmesidir: "sunucuya ulaşılamıyor" tekrar denemekle çözülebilir,
+ * "anahtar gerekiyor" ise kullanıcıdan bir şey ister.
+ */
+export class AuthRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthRequiredError';
+  }
+}
+
+/** Tüm istekler buradan geçer: kimlik başlığı ve hata çevirisi tek yerde. */
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, withAuth(init));
+  } catch {
+    throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new AuthRequiredError(await errorMessage(response));
+  }
+  return response;
+}
 
 export interface ChatMessage {
   message: string;
@@ -197,30 +284,20 @@ export interface UIAction {
   created_at: string;
 }
 
-/** GET yardımcı: hata mesajını tek yerde çözer. */
+/** GET yardımcı. Kimlik başlığı ve hata çevirisi `request` içinde. */
 async function getJson<T>(path: string): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`);
-  } catch {
-    throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
-  }
+  const response = await request(path);
   if (!response.ok) throw new Error(await errorMessage(response));
   return response.json() as Promise<T>;
 }
 
 /** Gövdeli istek yardımcısı (POST/PUT). */
 async function sendJson<T>(path: string, method: string, body: unknown): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
-  }
+  const response = await request(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   if (!response.ok) throw new Error(await errorMessage(response));
   return response.json() as Promise<T>;
 }
@@ -229,46 +306,22 @@ export const apiClient = {
   /** Bir mesajı Jarvis'e gönderir ve cevabı döndürür. */
   async chat(message: string, sessionId?: string | null): Promise<ChatResponse> {
     const payload: ChatMessage = { message, session_id: sessionId || null };
-
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // Ağ seviyesinde hata: sunucu hiç yanıt vermedi.
-      throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
-    }
-
-    if (!response.ok) throw new Error(await errorMessage(response));
-    return response.json() as Promise<ChatResponse>;
+    return sendJson<ChatResponse>('/chat', 'POST', payload);
   },
 
   /** Backend'in ayakta olup olmadığını kontrol eder. */
   async getHealth(): Promise<HealthResponse> {
-    const response = await fetch(`${API_BASE}/v1/health`);
-    if (!response.ok) throw new Error(await errorMessage(response));
-    return response.json() as Promise<HealthResponse>;
+    return getJson<HealthResponse>('/v1/health');
   },
 
   /** Geçerli sağlayıcı yapılandırmasını okur (anahtar hariç). */
   async getLlmConfig(): Promise<LLMConfig> {
-    const response = await fetch(`${API_BASE}/admin/llm`);
-    if (!response.ok) throw new Error(await errorMessage(response));
-    return response.json() as Promise<LLMConfig>;
+    return getJson<LLMConfig>('/admin/llm');
   },
 
   /** Sağlayıcıyı değiştirir; sunucuda hemen devreye girer. */
   async updateLlmConfig(update: LLMConfigUpdate): Promise<LLMConfig> {
-    const response = await fetch(`${API_BASE}/admin/llm`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(update),
-    });
-    if (!response.ok) throw new Error(await errorMessage(response));
-    return response.json() as Promise<LLMConfig>;
+    return sendJson<LLMConfig>('/admin/llm', 'PUT', update);
   },
 
   /**
@@ -278,19 +331,10 @@ export const apiClient = {
    * normal bir hata gibi fırlatılır, panel bunu kullanıcıya açıklar.
    */
   async runCoding(message: string, sessionId?: string | null): Promise<CodingResult> {
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE}/coding/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, session_id: sessionId || null }),
-      });
-    } catch {
-      throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
-    }
-
-    if (!response.ok) throw new Error(await errorMessage(response));
-    return response.json() as Promise<CodingResult>;
+    return sendJson<CodingResult>('/coding/run', 'POST', {
+      message,
+      session_id: sessionId || null,
+    });
   },
 
   /** Bellek kayıtlarını listeler; sorgu verilirse arar. */
@@ -359,12 +403,7 @@ export const apiClient = {
 
   /** Bir notu kalıcı olarak siler. */
   async deleteNote(id: string): Promise<void> {
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE}/notes/${id}`, { method: 'DELETE' });
-    } catch {
-      throw new Error('Sunucuya ulaşılamıyor. Backend çalışıyor mu?');
-    }
+    const response = await request(`/notes/${id}`, { method: 'DELETE' });
     if (!response.ok) throw new Error(await errorMessage(response));
   },
 };

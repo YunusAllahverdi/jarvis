@@ -146,6 +146,11 @@ class Settings(BaseSettings):
     # yanıtlar ve ikisi aynı kişide olmak zorunda değildir.
     admin_token: str = ""
 
+    # Derlenmiş kabuğun bulunduğu klasör. Varsa backend onu `/` altından
+    # sunar ve tablet gibi başka bir cihaz TEK bir adrese bağlanır; yoksa
+    # uygulama yalnızca API sunar (bu bir hata değildir).
+    frontend_dir: str = "frontend/dist"
+
     # Saat dilimi (IANA adı, ör. "Europe/Istanbul"). Boş bırakılırsa
     # sunucunun yerel dilimi kullanılır — bulutta bu yanlış olur, bu yüzden
     # araçlar kullandıkları dilimi sonuçta bildirir.

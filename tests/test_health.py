@@ -9,11 +9,17 @@ from app.main import create_app
 def make_client(tmp_path: Path) -> TestClient:
     # memory_db_path izole edilir; aksi halde uygulama gerçekten başlatıldığında
     # (lifespan) gerçek kullanıcı dizinindeki varsayılan bellek veritabanına dokunur.
+    #
+    # frontend_dir de var olmayan bir yola çevrilir. Sebebi somut: backend
+    # derlenmiş kabuğu bulursa kök adresi O karşılar ve JSON yerine HTML
+    # döner. Ayar sabitlenmezse bu testin sonucu, birinin `npm run build`
+    # çalıştırıp çalıştırmamış olmasına bağlı kalırdı.
     settings = Settings(
         app_name="Jarvis Test",
         app_version="test-1",
         environment="test",
         memory_db_path=str(tmp_path / "memory.db"),
+        frontend_dir=str(tmp_path / "derlenmemis-kabuk"),
     )
     app = create_app(settings)
     return TestClient(app)

@@ -52,8 +52,20 @@ daha tanıdıktır.
 
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
+PROTECTED_PREFIX = "/api"
+"""Korunan yolların öneki.
+
+KORUNAN ŞEY API'DİR, SAYFA DEĞİL. Bu ayrım zorunludur: backend derlenmiş
+kabuğu da sunar ve sayfanın kendisi anahtarla korunsaydı, kullanıcı anahtarı
+gireceği ekranı hiç göremezdi — tabletten bağlanmak imkânsız olurdu.
+
+Sayfayı açık bırakmak bir taviz değildir: derlenmiş kabuk herkese açık
+HTML ve JavaScript'tir, hiçbir sır taşımaz. Korunması gereken, onun
+konuştuğu uçlardır ve `/api` öneki tam olarak onları kapsar.
+"""
+
 DEFAULT_EXEMPT_PATHS: tuple[str, ...] = ("/api/v1/health",)
-"""Anahtarsız erişilebilen yollar.
+"""`/api` altında olduğu hâlde anahtarsız erişilebilen yollar.
 
 Yalnızca sağlık ucu. Liste bilinçli olarak KISA tutulur: her muafiyet,
 kimlik katmanında açılmış bir delik demektir ve buraya eklenen her yol
@@ -136,7 +148,14 @@ class ApiTokenMiddleware(BaseHTTPMiddleware):
 
     def _reject_reason(self, request: Request) -> tuple[str, str, int] | None:
         """İstek reddedilecekse `(kod, mesaj, http_durumu)`, aksi hâlde None."""
-        if request.url.path in self._exempt:
+        path = request.url.path
+
+        # Sayfa ve varlıkları serbesttir; korunan API'dir. Aksi hâlde
+        # kullanıcı anahtarı gireceği ekranı hiç göremezdi.
+        if not path.startswith(PROTECTED_PREFIX):
+            return None
+
+        if path in self._exempt:
             return None
 
         if self._token:
