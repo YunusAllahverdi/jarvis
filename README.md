@@ -15,6 +15,7 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Öğrenme ve kullanıcı modeli | Çalışıyor |
 | Kimlik doğrulama (ağa açıldığında zorunlu) | Çalışıyor |
 | Kalıcı notlar (kullanıcı + ajan) | Çalışıyor |
+| UI aksiyon kanalı (ajan panelleri açar) | Çalışıyor |
 | Araştırma / web erişimi | Çalışıyor, **varsayılan kapalı** |
 | Ajan karar katmanı (bağlam → politika → runner) | Çalışıyor |
 | Kodlama döngüsü (planla → uygula → doğrula → düzelt) | Çalışıyor, **varsayılan kapalı** |
@@ -216,6 +217,23 @@ JARVIS_RESEARCH_ALLOWED_DOMAINS=["docs.python.org","developer.mozilla.org"]
 değil içeriyi de gösterebilmesidir: `169.254.169.254` bulut sağlayıcısının
 kimlik sunucusu, `127.0.0.1:8000/api/admin/llm` ise uygulamanın kendi yönetim
 ucudur. Kontrol ada değil **çözülen adrese** bakar ve yönlendirmeler izlenmez.
+
+## Ajanın ekranı sürmesi
+
+Ajan `show_panel` aracıyla kabuktaki bir paneli açabilir: "notlarıma bak"
+dediğinde notlar paneli kendiliğinden açılır.
+
+Mimarinin tek cümlesi: **ajan ekrana metin gönderemez, yalnızca var olan bir
+paneli açmasını isteyebilir.** Serbest içerik gönderebilseydi, bir web
+sayfasından okunan metin kullanıcının ekranında Jarvis'in sözü gibi
+görünebilirdi. Kapalı bir kümeden seçim yapmak, en kötü ihtimalle yanlış
+panelin açılması demektir.
+
+- `GET /api/ui/actions?session_id=...` — bekleyen istekleri döndürür ve **tüketir**
+
+İzin seviyesi `READ`'tir: panel açmak dosyaya dokunmaz, komut çalıştırmaz ve
+geri alınamaz bir şey yapmaz — kullanıcı paneli kapatabilir. Onaya tabi
+olsaydı "notlarını açayım mı?" diye sorup beklemek etkileşimi zorlaştırırdı.
 
 ## Ajan yeteneklerini açma
 

@@ -179,6 +179,24 @@ export interface NoteView {
   created_by: string;
 }
 
+/** Ajanın açmasını istediği panel. Kapalı bir küme — backend'deki enum. */
+export type UIPanelName =
+  | 'notes'
+  | 'memory'
+  | 'experiences'
+  | 'traits'
+  | 'user_model'
+  | 'system'
+  | 'coding';
+
+export interface UIAction {
+  id: string;
+  panel: UIPanelName;
+  /** Panelin neden açıldığı; kullanıcı bunu bir hata sanmamalı. */
+  reason: string;
+  created_at: string;
+}
+
 /** GET yardımcı: hata mesajını tek yerde çözer. */
 async function getJson<T>(path: string): Promise<T> {
   let response: Response;
@@ -323,6 +341,20 @@ export const apiClient = {
   /** Var olan bir notu günceller. */
   async updateNote(id: string, content: string, title = ''): Promise<NoteView> {
     return sendJson<NoteView>(`/notes/${id}`, 'PUT', { content, title });
+  },
+
+  /**
+   * Ajanın bekleyen panel açma isteklerini alır.
+   *
+   * Okuma TÜKETİR: aksiyonlar sunucuda kalsaydı panel her yoklamada
+   * yeniden açılır ve kullanıcının kapattığı pencere geri gelirdi.
+   */
+  async consumeUiActions(sessionId?: string | null) {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('session_id', sessionId);
+    return getJson<{ actions: UIAction[]; count: number }>(
+      `/ui/actions${params.toString() ? `?${params}` : ''}`,
+    );
   },
 
   /** Bir notu kalıcı olarak siler. */

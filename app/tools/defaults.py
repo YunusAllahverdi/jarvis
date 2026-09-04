@@ -9,6 +9,8 @@ from app.security.network import NetworkGuard
 from app.security.paths import PathGuard
 from app.tools.builtin.notes import NoteSearchTool, NoteWriteTool
 from app.tools.builtin.research import FetchUrlTool
+from app.tools.builtin.ui import ShowPanelTool
+from app.ui.actions import UIActionBus
 from app.tools.builtin import (
     CalculatorTool,
     GetDateTool,
@@ -151,6 +153,24 @@ def register_note_tools(
     for tool in tools:
         registry.register(tool)
     return [tool.name for tool in tools]
+
+
+def register_ui_tool(
+    registry: ToolRegistry, *, bus: UIActionBus | None = None
+) -> list[str]:
+    """Panel açma aracını kaydeder.
+
+    Kanal verilmezse araç hiç var olmaz. Panel açmak READ seviyesindedir:
+    dosyaya dokunmaz, komut çalıştırmaz ve geri alınamaz bir şey yapmaz —
+    kullanıcı paneli kapatabilir.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if bus is None:
+        return []
+    registry.register(ShowPanelTool(bus=bus))
+    return [ShowPanelTool.name]
 
 
 def register_research_tool(

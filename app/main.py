@@ -24,8 +24,10 @@ from app.api.routes.coding import router as coding_router
 from app.api.routes.health import router as health_router
 from app.api.routes.insight import router as insight_router
 from app.api.routes.notes import router as notes_router
+from app.api.routes.ui import router as ui_router
 from app.notes.store import NoteStore
 from app.security.network import NetworkGuard
+from app.ui.actions import UIActionBus
 from app.api.routes.user_model import router as user_model_router
 from app.coding.loop import CodingLoop
 from app.coding.planner import CodingPlanner
@@ -71,6 +73,7 @@ from app.tools.defaults import (
     register_note_tools,
     register_research_tool,
     register_terminal_tool,
+    register_ui_tool,
 )
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
@@ -455,6 +458,7 @@ def _build_agent_stack(
     notes_writable: bool = True,
     network_guard: NetworkGuard | None = None,
     research_timeout_seconds: float = 20.0,
+    ui_action_bus: UIActionBus | None = None,
     terminal_enabled: bool = False,
     command_policy: CommandPolicy | None = None,
     terminal_timeout_seconds: float = 60.0,
@@ -492,6 +496,7 @@ def _build_agent_stack(
     registered += register_research_tool(
         agent_registry, guard=network_guard, timeout_seconds=research_timeout_seconds
     )
+    registered += register_ui_tool(agent_registry, bus=ui_action_bus)
     registered += register_terminal_tool(
         agent_registry,
         guard=workspace_guard,
@@ -862,6 +867,7 @@ def create_app(
                     else None
                 ),
                 research_timeout_seconds=active_settings.research_timeout_seconds,
+                ui_action_bus=app_instance.state.ui_action_bus,
                 terminal_enabled=active_settings.terminal_enabled,
                 command_policy=command_policy,
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
@@ -954,6 +960,11 @@ def create_app(
     app.state.council_member_store = None
     # Not deposu da lifespan'de kurulur; o ana kadar uç 503 döner.
     app.state.note_store = None
+    # UI aksiyon kanalı bellek içidir ve hiçbir dosyaya dokunmaz, bu yüzden
+    # lifespan beklemeden burada kurulabilir. Kalıcı olmaması bilinçlidir:
+    # bir panel açma isteği ANLIK bir niyettir ve yeniden başlatmadan sonra
+    # açılması, bağlamı çoktan kaybolmuş bir pencere göstermek olurdu.
+    app.state.ui_action_bus = UIActionBus()
     app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
     # auto_wire_memory_on_startup ise bu dördü lifespan başlayana kadar None kalır.
@@ -986,6 +997,7 @@ def create_app(
     app.include_router(coding_router, prefix="/api")
     app.include_router(insight_router, prefix="/api")
     app.include_router(notes_router, prefix="/api")
+    app.include_router(ui_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])

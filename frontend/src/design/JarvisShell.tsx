@@ -116,6 +116,44 @@ export const JarvisShell = () => {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
+  /* Ajanın açmasını istediği panelleri uygular.
+   *
+   * Yalnızca sohbet turundan SONRA yoklanır, arka planda sürekli değil:
+   * aksiyonlar yalnızca ajan bir tur çalıştırdığında oluşur, dolayısıyla
+   * yoklanacak an bellidir ve saniyede bir sormak boşuna istek üretirdi.
+   *
+   * Birden fazla aksiyon varsa SONUNCUSU uygulanır: paneller tek tek
+   * açılıyor ve hepsini açmak, kullanıcının önüne üst üste pencere
+   * yığmak olurdu. Sonuncusu, ajanın en son niyetidir. */
+  const applyAgentPanels = useCallback(async (activeSessionId: string | null) => {
+    let actions;
+    try {
+      actions = (await apiClient.consumeUiActions(activeSessionId)).actions;
+    } catch {
+      // Kanal bağlı değilse veya okunamıyorsa sohbet etkilenmez.
+      return;
+    }
+    const last = actions.at(-1);
+    if (!last) return;
+
+    setCodingOpen(false);
+    setNotesOpen(false);
+    setInsight(null);
+
+    const SECTIONS: Record<string, InsightSection> = {
+      memory: 'Bellek',
+      experiences: 'Deneyimler',
+      traits: 'Öğrendiklerim',
+      user_model: 'Benim Modelim',
+      system: 'Sistem',
+    };
+
+    if (last.panel === 'notes') { setNav('Notlar'); setNotesOpen(true); return; }
+    if (last.panel === 'coding') { setNav('Ajanlar'); setCodingOpen(true); return; }
+    const section = SECTIONS[last.panel];
+    if (section) { setNav(section); setInsight(section); }
+  }, []);
+
   const refreshActivities = useCallback(() => {
     apiClient
       .getExperiences(3)
@@ -147,6 +185,8 @@ export const JarvisShell = () => {
       speech.speak(res.response);
       // Bu tur bir deneyim ürettiyse aktivite listesi artık eskimiştir.
       refreshActivities();
+      // Ajan bu turda bir panel açmak istediyse şimdi uygulanır.
+      void applyAgentPanels(res.session_id ?? sessionId);
       // Cevap uzunluğuna göre "konuşma" süresi; sonra dinlenmeye dön.
       const dwell = Math.min(Math.max(res.response.length * 40, 2000), 7000);
       window.setTimeout(() => {
@@ -161,7 +201,7 @@ export const JarvisShell = () => {
     } finally {
       setBusy(false);
     }
-  }, [input, busy, sessionId, speech, refreshActivities]);
+  }, [input, busy, sessionId, speech, refreshActivities, applyAgentPanels]);
 
   /* Gezinme: her başlık artık gerçekten bir şey açar.
    *
