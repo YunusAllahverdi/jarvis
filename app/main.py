@@ -71,6 +71,7 @@ from app.tools.defaults import (
     build_default_tool_registry,
     register_context_tools,
     register_filesystem_tools,
+    register_maps_tools,
     register_note_tools,
     register_research_tool,
     register_terminal_tool,
@@ -464,6 +465,7 @@ def _build_agent_stack(
     command_policy: CommandPolicy | None = None,
     terminal_timeout_seconds: float = 60.0,
     timezone_name: str | None = None,
+    maps_api_key: str = "",
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -505,6 +507,7 @@ def _build_agent_stack(
         enabled=terminal_enabled,
         max_timeout_seconds=terminal_timeout_seconds,
     )
+    registered += register_maps_tools(agent_registry, api_key=maps_api_key)
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
         policy=policy_boundary,
@@ -873,6 +876,7 @@ def create_app(
                 command_policy=command_policy,
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
                 timezone_name=active_settings.timezone or None,
+                maps_api_key=active_settings.maps_api_key,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

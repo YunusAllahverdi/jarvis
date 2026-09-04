@@ -138,7 +138,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 
-export type LLMProviderKind = 'ollama' | 'openai_compatible';
+export type LLMProviderKind = 'ollama' | 'openai_compatible' | 'anthropic';
 
 export interface LLMConfig {
   kind: LLMProviderKind;

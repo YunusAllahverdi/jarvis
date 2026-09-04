@@ -5,6 +5,20 @@ import {
   type LLMProviderKind,
 } from '../api/client';
 
+// Maps API key localStorage'da tutulur; backend'e ayrı bir endpoint
+// olmadığından şimdilik env/ayar aracılığıyla iletilir. Kullanıcıya
+// kolaylık olsun diye panel burada gösterir ve kaydeder.
+const MAPS_KEY_STORAGE = 'jarvis.maps.api_key';
+function readMapsKey(): string {
+  try { return window.localStorage.getItem(MAPS_KEY_STORAGE) ?? ''; } catch { return ''; }
+}
+function saveMapsKey(key: string): void {
+  try {
+    if (key) window.localStorage.setItem(MAPS_KEY_STORAGE, key);
+    else window.localStorage.removeItem(MAPS_KEY_STORAGE);
+  } catch { /* ignore */ }
+}
+
 /**
  * Sağlayıcı ayarlarının değiştirildiği panel.
  *
@@ -44,6 +58,14 @@ const FIELD: React.CSSProperties = {
 const SUGGESTED_BASE_URL: Record<LLMProviderKind, string> = {
   ollama: 'http://127.0.0.1:11434',
   openai_compatible: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  anthropic: 'https://api.anthropic.com',
+};
+
+/** Sağlayıcı seçildiğinde önerilen model adı. */
+const SUGGESTED_MODEL: Record<LLMProviderKind, string> = {
+  ollama: '',
+  openai_compatible: 'gemini-2.0-flash',
+  anthropic: 'claude-haiku-4-5',
 };
 
 interface Props {
@@ -56,6 +78,8 @@ export const AdminPanel = ({ onClose }: Props) => {
   const [model, setModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
+  const [mapsKey, setMapsKey] = useState(() => readMapsKey());
+  const [mapsKeySaved, setMapsKeySaved] = useState(() => !!readMapsKey());
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -137,7 +161,17 @@ export const AdminPanel = ({ onClose }: Props) => {
     if (!baseUrl.trim() || Object.values(SUGGESTED_BASE_URL).includes(baseUrl.trim())) {
       setBaseUrl(SUGGESTED_BASE_URL[next]);
     }
+    // Model önerisi de aynı şekilde sadece boş/varsayılan durumdayken uygulanır.
+    if (!model.trim() || Object.values(SUGGESTED_MODEL).includes(model.trim())) {
+      setModel(SUGGESTED_MODEL[next]);
+    }
   };
+
+  const saveMapsKeyAction = useCallback(() => {
+    saveMapsKey(mapsKey.trim());
+    setMapsKeySaved(!!mapsKey.trim());
+    setMessage({ text: mapsKey.trim() ? 'Maps anahtarı kaydedildi.' : 'Maps anahtarı silindi.', ok: true });
+  }, [mapsKey]);
 
   return (
     <div
@@ -176,19 +210,19 @@ export const AdminPanel = ({ onClose }: Props) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <span style={LABEL}>Sağlayıcı</span>
               <div style={{ display: 'flex', gap: 8 }}>
-                {(['ollama', 'openai_compatible'] as LLMProviderKind[]).map((option) => (
+                {(['ollama', 'openai_compatible', 'anthropic'] as LLMProviderKind[]).map((option) => (
                   <button
                     key={option}
                     onClick={() => chooseKind(option)}
                     style={{
-                      flex: 1, height: 36, borderRadius: 10, cursor: 'pointer', fontSize: 12.5,
+                      flex: 1, height: 36, borderRadius: 10, cursor: 'pointer', fontSize: 12,
                       background: kind === option ? 'rgba(112,92,255,0.24)' : 'rgba(140,150,255,0.06)',
                       border: `1px solid ${kind === option ? 'rgba(150,130,255,0.45)' : 'rgba(140,150,255,0.16)'}`,
                       color: kind === option ? '#cfc4ff' : '#9aa4cc',
                       fontFamily: 'inherit',
                     }}
                   >
-                    {option === 'ollama' ? 'Ollama (yerel)' : 'OpenAI uyumlu'}
+                    {option === 'ollama' ? 'Ollama' : option === 'openai_compatible' ? 'OpenAI uyumlu' : 'Claude (Anthropic)'}
                   </button>
                 ))}
               </div>
@@ -200,8 +234,17 @@ export const AdminPanel = ({ onClose }: Props) => {
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder="https://..."
-                style={FIELD}
+                style={{
+                  ...FIELD,
+                  ...(kind === 'anthropic' ? { opacity: 0.4, pointerEvents: 'none' } : {}),
+                }}
+                readOnly={kind === 'anthropic'}
               />
+              {kind === 'anthropic' && (
+                <span style={{ fontSize: 11, color: '#6f7aa5' }}>
+                  Anthropic adresi sabittir: api.anthropic.com
+                </span>
+              )}
             </label>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -214,7 +257,7 @@ export const AdminPanel = ({ onClose }: Props) => {
               />
             </label>
 
-            {kind === 'openai_compatible' && (
+            {(kind === 'openai_compatible' || kind === 'anthropic') && (
               <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <span style={LABEL}>
                   API anahtarı {hasKey && <span style={{ color: '#4ade9b' }}>· tanımlı</span>}
@@ -223,7 +266,7 @@ export const AdminPanel = ({ onClose }: Props) => {
                   type="password"
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
-                  placeholder={hasKey ? 'Değiştirmek için yeni anahtarı yazın' : 'Anahtarı yapıştırın'}
+                  placeholder={hasKey ? 'Değiştirmek için yeni anahtarı yazın' : (kind === 'anthropic' ? 'sk-ant-...' : 'Anahtarı yapıştırın')}
                   autoComplete="off"
                   style={FIELD}
                 />
@@ -246,6 +289,44 @@ export const AdminPanel = ({ onClose }: Props) => {
                 {message.text}
               </div>
             )}
+
+            {/* ── Google Maps ──────────────────────────────────── */}
+            <div style={{
+              borderTop: '1px solid rgba(140,150,255,0.12)',
+              paddingTop: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 7,
+            }}>
+              <span style={LABEL}>
+                Google Maps API anahtarı {mapsKeySaved && <span style={{ color: '#4ade9b' }}>· tanımlı</span>}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="password"
+                  value={mapsKey}
+                  onChange={(e) => setMapsKey(e.target.value)}
+                  placeholder={mapsKeySaved ? 'Değiştirmek için yeni anahtarı yazın' : 'AIza...'}
+                  autoComplete="off"
+                  style={{ ...FIELD, flex: 1 }}
+                />
+                <button
+                  onClick={saveMapsKeyAction}
+                  style={{
+                    height: 38, padding: '0 14px', borderRadius: 10, cursor: 'pointer',
+                    background: 'rgba(52,200,120,0.18)',
+                    border: '1px solid rgba(52,200,120,0.35)',
+                    color: '#8fd9b6', fontSize: 12, fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Kaydet
+                </button>
+              </div>
+              <span style={{ fontSize: 11, color: '#6f7aa5' }}>
+                Anahtar tarayıcıda saklanır. Geocode, yol tarifi ve yer arama araçlarını etkinleştirir.
+              </span>
+            </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
               <button

@@ -132,6 +132,12 @@ class Settings(BaseSettings):
     # komut politikasının tanıdıklarıyla kesiştirilerek kullanılır.
     coding_verification_commands: list[str] = Field(default_factory=list)
 
+    # Google Maps API
+    # ------------------------------------------------------------------
+    # API anahtarı tanımlıysa geocode, yol tarifi ve yer arama araçları
+    # otomatik olarak kaydedilir. Boş bırakılırsa Maps araçları hiç var olmaz.
+    maps_api_key: str = ""
+
     # Kimlik doğrulama
     # ------------------------------------------------------------------
     # TÜM uçlar için anahtar (sağlık ucu hariç). Boşsa uygulama yalnızca

@@ -27,6 +27,7 @@ from threading import RLock
 
 from pydantic import BaseModel, Field
 
+from app.adapters.llm.anthropic import AnthropicProvider
 from app.adapters.llm.base import LLMProvider
 from app.adapters.llm.ollama import OllamaProvider
 from app.adapters.llm.openai_compatible import OpenAICompatibleProvider
@@ -43,6 +44,9 @@ class LLMProviderKind(StrEnum):
 
     OPENAI_COMPATIBLE = "openai_compatible"
     """OpenAI sohbet sözleşmesini konuşan her servis."""
+
+    ANTHROPIC = "anthropic"
+    """Anthropic Messages API (Claude Haiku, Sonnet, Opus vb.)."""
 
 
 class LLMConfig(BaseModel):
@@ -76,6 +80,12 @@ def build_llm_provider(
 
     Anahtar doğrudan sağlayıcıya verilir, hiçbir yere kopyalanmaz.
     """
+    if kind is LLMProviderKind.ANTHROPIC:
+        return AnthropicProvider(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
     if kind is LLMProviderKind.OPENAI_COMPATIBLE:
         return OpenAICompatibleProvider(
             base_url=base_url,
