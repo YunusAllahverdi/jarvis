@@ -102,6 +102,12 @@ export default function ProviderPanel() {
       subtitle="Sağlayıcı çalışma zamanında değiştirilir; yeniden başlatma gerekmez."
       testId="provider-panel"
     >
+      {/* Erişim anahtarı kutusu her zaman görünür — `draft`e BAĞLI DEĞİL.
+          Önceki hâli kilitlenmeye yol açıyordu: ayarlar 401 yüzünden
+          yüklenemediğinde kutu da çizilmiyordu, yani anahtar girmek için
+          anahtarın olması gerekiyordu. */}
+      <AccessTokenBox onSaved={() => window.location.reload()} />
+
       {err && <ErrorNote err={err} testId="provider-error" />}
       {cfg === null && !err && <LoadingBlock />}
 
@@ -200,57 +206,76 @@ export default function ProviderPanel() {
             </Btn>
           </div>
 
-          <div className="pt-5 border-t hairline space-y-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.28em] font-mono text-muted">
-                Bu cihazın erişim anahtarı
-              </p>
-              <p className="text-[11px] text-muted mt-1 leading-relaxed">
-                Sunucu ağa açıldığında (tabletten kullanmak için) zorunlu olur.
-                Sunucudaki <span className="font-mono">JARVIS_API_TOKEN</span>{" "}
-                değeriyle aynı olmalı. Sağlayıcı anahtarıyla ilgisi yoktur.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span
-                className="pill"
-                style={
-                  hasToken
-                    ? { borderColor: "rgba(16,185,129,0.4)", color: "#8ff0c8" }
-                    : { borderColor: "rgba(255,255,255,0.14)" }
-                }
-              >
-                {hasToken ? "tanımlı" : "yok"}
-              </span>
-            </div>
-
-            <Input
-              type="password"
-              autoComplete="off"
-              value={tokenDraft}
-              onChange={(e) => setTokenDraft(e.target.value)}
-              placeholder={hasToken ? "değiştirmek için yeni anahtar" : "anahtarı yapıştırın"}
-              data-testid="access-token-input"
-            />
-
-            <div className="flex gap-2">
-              <Btn onClick={saveToken} data-testid="access-token-save">
-                <KeyRound size={12} className="inline mr-1" /> Anahtarı kaydet
-              </Btn>
-              {hasToken && (
-                <Btn
-                  kind="danger"
-                  onClick={() => { setToken(""); setHasToken(false); setNote("Erişim anahtarı silindi."); }}
-                  data-testid="access-token-clear"
-                >
-                  Sil
-                </Btn>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </PanelShell>
+  );
+}
+
+/**
+ * Bu cihazın erişim anahtarı.
+ *
+ * Sağlayıcı ayarlarından AYRI bir bileşen olmasının sebebi somut bir
+ * kilitlenmedir: kutu ayarların yüklenmesine bağlıyken, sunucu 401
+ * döndüğünde kutu da çizilmiyordu — anahtar girebilmek için anahtarın
+ * olması gerekiyordu ve kullanıcının çıkış yolu kalmıyordu.
+ *
+ * Kaydedince sayfa yenilenir: bütün paneller anahtarsız açılmış ve
+ * hepsi 401 almıştır; tek tek tazelemek yerine baştan yüklemek hem
+ * basit hem de eksiksiz.
+ */
+function AccessTokenBox({ onSaved }) {
+  const [value, setValue] = useState("");
+  const has = !!getToken();
+
+  return (
+    <div className="mx-6 mt-6 p-4 rounded-lg border hairline glass-soft" data-testid="access-token-box">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] uppercase tracking-[0.28em] font-mono text-muted">
+          Bu cihazın erişim anahtarı
+        </p>
+        <span
+          className="pill"
+          style={
+            has
+              ? { borderColor: "rgba(16,185,129,0.4)", color: "#8ff0c8" }
+              : { borderColor: "rgba(245,158,11,0.4)", color: "#fbe1a3" }
+          }
+        >
+          {has ? "tanımlı" : "yok"}
+        </span>
+      </div>
+
+      <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
+        Sunucudaki <span className="font-mono">JARVIS_API_TOKEN</span> değeriyle
+        aynı olmalı. Bunu bir yerden almazsınız — .env dosyasında ne yazıyorsa
+        odur. Sağlayıcı (Anthropic) anahtarıyla ilgisi yoktur.
+      </p>
+
+      <div className="mt-3 space-y-2">
+        <Input
+          type="password"
+          autoComplete="off"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={has ? "değiştirmek için yeni anahtar" : "anahtarı yapıştırın"}
+          data-testid="access-token-input"
+        />
+        <div className="flex gap-2">
+          <Btn
+            kind="primary"
+            onClick={() => { setToken(value); setValue(""); onSaved?.(); }}
+            data-testid="access-token-save"
+          >
+            <KeyRound size={12} className="inline mr-1" /> Kaydet
+          </Btn>
+          {has && (
+            <Btn kind="danger" onClick={() => { setToken(""); onSaved?.(); }} data-testid="access-token-clear">
+              Sil
+            </Btn>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
