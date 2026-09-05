@@ -1,32 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
-
-/* Kabuk sabit bir sahne olarak ölçekleniyor, sayfa hiç kaymamalı. */
+/* Masa sabit bir sahne olarak ölçekleniyor; sayfanın kendisi hiç kaymamalı.
+   Kaydırma pencerelerin İÇİNDE olur — dışarıda bir kaydırma çubuğu, cam
+   yüzeylerin kenarını kesip sahneyi bir web sayfasına çevirirdi. */
 html, body {
   margin: 0;
   padding: 0;
-  background: #04030c;
+  background: #05060a;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+
+/* Pencere içi kaydırma çubukları ince ve sessiz: içeriğin kenarında
+   duran kalın bir çubuk, 300 piksellik bir pencerede yer kaplardı. */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(232, 236, 244, 0.14);
+  border-radius: 4px;
 }
+::-webkit-scrollbar-thumb:hover { background: rgba(232, 236, 244, 0.26); }
 
-a { color: #9db4ff; text-decoration: none; }
-a:hover { color: #cfd9ff; }
+::selection { background: rgba(120, 150, 255, 0.35); color: #fff; }
 
-::selection { background: rgba(120, 110, 255, 0.35); }
-
+/* Klavyeyle gezinen kullanıcı odağın nerede olduğunu görebilmeli.
+   Tasarım fare için çizilmişti; bu satır onun eksiğini kapatıyor. */
 :focus-visible {
-  outline: 2px solid rgba(180, 165, 255, 0.9);
+  outline: 2px solid rgba(150, 180, 255, 0.85);
   outline-offset: 2px;
 }
 
-input::placeholder { color: #6f7aa5; }
+a { color: #8ca4ff; text-decoration: none; }
+a:hover { color: #b4c8ff; }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+input::placeholder,
+textarea::placeholder { color: rgba(232, 236, 244, 0.34); }

@@ -7,6 +7,7 @@ from app.security.checkpoints import ChangeJournal
 from app.security.commands import CommandPolicy
 from app.security.network import NetworkGuard
 from app.security.paths import PathGuard
+from app.tools.builtin.maps import MapsDirectionsTool, MapsGeocodeTool, MapsPlacesTool
 from app.tools.builtin.notes import NoteSearchTool, NoteWriteTool
 from app.tools.builtin.research import FetchUrlTool
 from app.tools.builtin.ui import ShowPanelTool
@@ -225,3 +226,32 @@ def register_terminal_tool(
         )
     )
     return [RunCommandTool.name]
+
+
+def register_maps_tools(
+    registry: ToolRegistry,
+    *,
+    api_key: str | None = None,
+    timeout_seconds: float = 15.0,
+) -> list[str]:
+    """Google Maps araçlarını kaydeder.
+
+    API anahtarı verilmezse HİÇBİRİ kaydedilmez. Anahtarsız Maps araçları
+    anlamsızdır: her çağrı Google tarafından reddedilirdi. Kapalıyken
+    sistemin davranışı Maps eklenmeden önceki hâliyle aynıdır.
+
+    Returns:
+        Gerçekten kaydedilen tool adları.
+    """
+    if not api_key or not api_key.strip():
+        return []
+
+    clean_key = api_key.strip()
+    tools = [
+        MapsGeocodeTool(api_key=clean_key, timeout_seconds=timeout_seconds),
+        MapsDirectionsTool(api_key=clean_key, timeout_seconds=timeout_seconds),
+        MapsPlacesTool(api_key=clean_key, timeout_seconds=timeout_seconds),
+    ]
+    for tool in tools:
+        registry.register(tool)
+    return [tool.name for tool in tools]
