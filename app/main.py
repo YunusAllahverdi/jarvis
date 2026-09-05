@@ -17,6 +17,7 @@ from app.agent.runner import AgentRunner
 from app.api.routes.agent import router as agent_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
+from app.api.routes.speech import router as speech_router
 from app.api.routes.user_model import router as user_model_router
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
@@ -391,6 +392,7 @@ def create_app(
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api")
     app.include_router(user_model_router, prefix="/api")
+    app.include_router(speech_router, prefix="/api")
     app.include_router(agent_router, prefix="/api")
 
     @app.get("/", response_model=ServiceInfo, tags=["system"])
