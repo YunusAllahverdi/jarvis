@@ -155,7 +155,12 @@ class Settings(BaseSettings):
     # Derlenmiş kabuğun bulunduğu klasör. Varsa backend onu `/` altından
     # sunar ve tablet gibi başka bir cihaz TEK bir adrese bağlanır; yoksa
     # uygulama yalnızca API sunar (bu bir hata değildir).
-    frontend_dir: str = "frontend/dist"
+    #
+    # Varsayılan `frontend/build`, kabuğun derleyicisi Vite'tan (`dist`)
+    # Create React App'e (`build`) geçtiği için değişti. Ayarın kendisi
+    # zaten bunun için vardı: derleyici değiştiğinde koda dokunmadan
+    # yeni çıktı klasörü gösterilebilsin diye.
+    frontend_dir: str = "frontend/build"
 
     # Saat dilimi (IANA adı, ör. "Europe/Istanbul"). Boş bırakılırsa
     # sunucunun yerel dilimi kullanılır — bulutta bu yanlış olur, bu yüzden

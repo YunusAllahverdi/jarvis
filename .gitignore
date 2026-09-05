@@ -4,10 +4,30 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
-.env
 dist/
 build/
 *.egg-info/
+
+# Ortam dosyaları — KAPSAMLI.
+#
+# Tek bir `.env` satırı yetmiyordu: iç içe klasörlerdeki (`frontend/.env`)
+# ve son ekli (`.env.production`, `.env.local`) dosyalar o kalıba UYMAZ.
+# Emergent şablonunda tam bu boşluk vardı — bölüm başlığı "comprehensive
+# coverage" diyordu ama altındaki kalıplar silinmişti; kökte bırakılan
+# herhangi bir `.env` sessizce commit'lenebilirdi.
+#
+# Örnek dosyalar (`.env.example`) bilerek DIŞARIDA: onlar yalnızca
+# yer tutucu içerir ve depoda durmaları gerekir.
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# Kimlik dosyaları
+*token.json*
+*credentials.json*
+*.pem
 
 # Araç / oturum metadata
 .freebuff/

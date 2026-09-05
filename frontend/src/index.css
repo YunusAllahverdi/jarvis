@@ -1,38 +1,270 @@
-/* Masa sabit bir sahne olarak ölçekleniyor; sayfanın kendisi hiç kaymamalı.
-   Kaydırma pencerelerin İÇİNDE olur — dışarıda bir kaydırma çubuğu, cam
-   yüzeylerin kenarını kesip sahneyi bir web sayfasına çevirirdi. */
-html, body {
-  margin: 0;
-  padding: 0;
-  background: #05060a;
-  overflow: hidden;
+/* J.A.R.V.I.S — soft Apple-like dark OS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap");
+
+@layer base {
+  :root {
+    --bg-950: #0d1120;
+    --bg-900: #11162a;
+    --bg-800: #161c33;
+    --line: rgba(255, 255, 255, 0.10);
+    --line-soft: rgba(255, 255, 255, 0.06);
+    --text-primary: #eef1f8;
+    --text-secondary: #a3acc0;
+    --text-muted: #6f7890;
+    --electric: #8ab4ff;
+    --electric-glow: #b9d3ff;
+    --status-idle: #8ab4ff;
+    --status-listening: #8fe3ff;
+    --status-thinking: #c3a6ff;
+    --status-streaming: #8fe0c0;
+    --status-error: #ff9a9a;
+    --status-amber: #ffd08a;
+    --apple-blue: #3b82f6;
+    --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+
+    --background: 228 40% 9%;
+    --foreground: 220 25% 95%;
+    --card: 228 35% 13%;
+    --card-foreground: 220 25% 95%;
+    --popover: 228 35% 12%;
+    --popover-foreground: 220 25% 95%;
+    --primary: 220 100% 77%;
+    --primary-foreground: 228 40% 9%;
+    --secondary: 228 30% 18%;
+    --secondary-foreground: 220 25% 95%;
+    --muted: 228 30% 18%;
+    --muted-foreground: 220 15% 65%;
+    --accent: 220 100% 77%;
+    --accent-foreground: 228 40% 9%;
+    --destructive: 0 84% 70%;
+    --destructive-foreground: 220 25% 95%;
+    --border: 228 25% 20%;
+    --input: 228 25% 20%;
+    --ring: 220 100% 77%;
+    --radius: 0.75rem;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-950);
+  color: var(--text-primary);
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
 }
 
-* { box-sizing: border-box; }
+.h-dvh { height: 100vh; height: 100dvh; }
+.font-display { font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; }
+.font-mono    { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
 
-/* Pencere içi kaydırma çubukları ince ve sessiz: içeriğin kenarında
-   duran kalın bir çubuk, 300 piksellik bir pencerede yer kaplardı. */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Soft navy wallpaper with muted aurora blobs */
+.jarvis-shell {
+  background:
+    radial-gradient(900px 600px at 15% 10%, rgba(88, 120, 220, 0.22), transparent 60%),
+    radial-gradient(800px 600px at 85% 20%, rgba(150, 110, 220, 0.16), transparent 60%),
+    radial-gradient(900px 700px at 60% 100%, rgba(70, 150, 190, 0.16), transparent 60%),
+    linear-gradient(180deg, #131a30 0%, #0f1426 55%, #0c1020 100%);
+}
+
+.jarvis-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/></svg>");
+  mix-blend-mode: overlay;
+  opacity: 0.04;
+  z-index: 0;
+}
+
+/* Dark glass */
+.glass {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 24px 60px -30px rgba(0, 0, 0, 0.7);
+}
+.glass-soft {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line-soft);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* White glass (macOS window body) */
+.light-surface {
+  --text-primary: #1d1d1f;
+  --text-secondary: #5c6370;
+  --text-muted: #8b919d;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-soft: rgba(0, 0, 0, 0.06);
+  --electric: #2f6fed;
+  color: var(--text-primary);
+  color-scheme: light;
+}
+.light-surface .text-white { color: #1d1d1f; }
+.light-surface .glass,
+.light-surface .glass-soft {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.light-surface .bg-black\/30, .light-surface .bg-black\/40 { background: rgba(0, 0, 0, 0.04); }
+.light-surface .hover\:bg-white\/5:hover { background: rgba(0, 0, 0, 0.04); }
+.light-surface .bg-white\/5 { background: rgba(0, 0, 0, 0.04); }
+.light-surface .pill { background: rgba(0, 0, 0, 0.04); border-color: rgba(0, 0, 0, 0.08); color: var(--text-secondary); }
+.light-surface .electric-btn {
+  background: var(--apple-blue);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(59, 130, 246, 0.4);
+}
+.light-surface .electric-btn:hover { background: #2f6fed; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35); }
+.light-surface ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); }
+.light-surface .text-red-200, .light-surface .text-red-300 { color: #c0392b; }
+.light-surface .animate-pulse { background: rgba(0, 0, 0, 0.05); }
+.light-surface .text-secondary { color: var(--text-secondary); }
+.light-surface .text-muted { color: var(--text-muted); }
+.light-surface .electric-text { color: var(--electric); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(232, 236, 244, 0.14);
-  border-radius: 4px;
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); }
+
+::selection { background: rgba(138, 180, 255, 0.35); color: #fff; }
+
+/* Utility */
+.hairline { border-color: var(--line); }
+.electric-text { color: var(--electric); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.electric-btn {
+  background: rgba(138, 180, 255, 0.16);
+  border: 1px solid rgba(138, 180, 255, 0.30);
+  color: #dbe8ff;
+  transition: transform 220ms var(--ease-apple), box-shadow 220ms ease, background 220ms ease;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(232, 236, 244, 0.26); }
+.electric-btn:hover {
+  background: rgba(138, 180, 255, 0.26);
+  box-shadow: 0 8px 24px -8px rgba(138, 180, 255, 0.45);
+  transform: translateY(-1px);
+}
+.electric-btn:active { transform: scale(0.97); }
 
-::selection { background: rgba(120, 150, 255, 0.35); color: #fff; }
+.pill {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
 
-/* Klavyeyle gezinen kullanıcı odağın nerede olduğunu görebilmeli.
-   Tasarım fare için çizilmişti; bu satır onun eksiğini kapatıyor. */
-:focus-visible {
-  outline: 2px solid rgba(150, 180, 255, 0.85);
+/* Chat bubbles */
+.bubble-user {
+  background: linear-gradient(180deg, rgba(138, 180, 255, 0.28), rgba(138, 180, 255, 0.18));
+  border: 1px solid rgba(138, 180, 255, 0.28);
+  color: #f3f7ff;
+}
+.bubble-error { background: rgba(255, 154, 154, 0.10); border: 1px solid rgba(255, 154, 154, 0.35); color: #ffd2d2; }
+
+.msg-enter { animation: msgIn 420ms var(--ease-apple) both; }
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0) scale(1);       filter: blur(0); }
+}
+
+/* Orb glow */
+@keyframes orbBreath {
+  0%, 100% { transform: scale(1)    translateY(0);   filter: drop-shadow(0 18px 40px rgba(138, 180, 255, 0.22)); }
+  50%      { transform: scale(1.02) translateY(-4px); filter: drop-shadow(0 26px 60px rgba(180, 160, 255, 0.30)); }
+}
+.orb-breath { animation: orbBreath 7s ease-in-out infinite; }
+.orb-interactive { cursor: pointer; transition: transform 500ms var(--ease-apple); }
+.orb-interactive:hover { transform: scale(1.03); }
+.orb-interactive:active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-breath, .msg-enter { animation: none !important; }
+}
+
+button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid rgba(138, 180, 255, 0.55);
   outline-offset: 2px;
+  border-radius: 10px;
 }
 
-a { color: #8ca4ff; text-decoration: none; }
-a:hover { color: #b4c8ff; }
+/* macOS window */
+.mac-window {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.35),
+    0 40px 90px -20px rgba(0, 0, 0, 0.55),
+    0 12px 28px -12px rgba(0, 0, 0, 0.35);
+}
+.mac-titlebar {
+  background: linear-gradient(180deg, rgba(246, 246, 248, 0.95), rgba(232, 233, 238, 0.95));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.10);
+}
+.mac-tab {
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid transparent;
+  color: #5c6370;
+  transition: background 200ms ease, color 200ms ease, transform 200ms var(--ease-apple);
+}
+.mac-tab:hover { background: rgba(0, 0, 0, 0.06); color: #1d1d1f; }
+.mac-tab.active {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #1d1d1f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.traffic { width: 12px; height: 12px; border-radius: 999px; position: relative; transition: transform 180ms var(--ease-apple); }
+.traffic:active { transform: scale(0.9); }
+.traffic-close { background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.15); }
+.traffic-min   { background: #febc2e; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.15); }
+.traffic-max   { background: #28c840; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.15); }
+.traffic svg { opacity: 0; transition: opacity 150ms; position: absolute; inset: 0; margin: auto; }
+.traffic-group:hover .traffic svg { opacity: 1; }
 
-input::placeholder,
-textarea::placeholder { color: rgba(232, 236, 244, 0.34); }
+/* Dock */
+.dock {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.dock-icon {
+  transition: transform 260ms var(--ease-apple);
+  transform-origin: bottom center;
+}
+.dock-icon:hover { transform: translateY(-10px) scale(1.22); }
+.dock-icon:active { transform: translateY(-6px) scale(1.1); }
+.dock-tip {
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 180ms ease, transform 180ms var(--ease-apple);
+}
+.dock-icon:hover .dock-tip { opacity: 1; transform: translateY(0); }
+
+/* Panel command bar */
+.cmd-bar {
+  background: rgba(255, 255, 255, 0.85);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.cmd-reply { animation: msgIn 360ms var(--ease-apple) both; }

@@ -4,14 +4,27 @@
     {
       "name": "jarvis-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
-      "port": 5173
+      "runtimeArgs": [
+        "start",
+        "--prefix",
+        "frontend"
+      ],
+      "port": 3000
     },
     {
       "name": "jarvis-backend",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-      "port": 8000
+      "runtimeExecutable": "../../../.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8123"
+      ],
+      "port": 8123,
+      "autoPort": false
     }
   ]
 }
