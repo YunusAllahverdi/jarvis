@@ -299,6 +299,22 @@ export const api = {
       actions: [],
     })),
 
+  /* ── seslendirme (ElevenLabs) ── */
+
+  /**
+   * Metni sunucudaki ElevenLabs sesiyle seslendirir ve sesi döndürür.
+   *
+   * Anahtar SUNUCUDA durur; buraya hiç gelmez. Tarayıcıdan doğrudan
+   * ElevenLabs'e gidilseydi anahtarın derlenmiş JavaScript'e gömülmesi
+   * gerekirdi ve sayfayı açan herkes onu okuyabilirdi.
+   */
+  tts: (text, voice_id) =>
+    http
+      .post("/speech/tts", { text, voice_id: voice_id || null }, { responseType: "blob" })
+      .then((r) => r.data),
+
+  voices: () => http.get("/speech/voices").then((r) => r.data),
+
   /* ── backend'de karşılığı olmayanlar ── */
 
   listEvents: () =>

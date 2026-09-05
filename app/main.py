@@ -26,6 +26,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.insight import router as insight_router
 from app.api.routes.notes import router as notes_router
 from app.api.routes.research import router as research_router
+from app.api.routes.speech import router as speech_router
 from app.api.routes.ui import router as ui_router
 from app.api.static import mount_frontend
 from app.notes.store import NoteStore
@@ -67,6 +68,7 @@ from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.checkpoints import SQLiteCheckpointStore
 from app.security.commands import CommandNotAllowedError, CommandPolicy
 from app.security.paths import PathGuard
+from app.services.speech import SpeechService
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.base import PermissionLevel
 from app.tools.defaults import (
@@ -148,6 +150,23 @@ def _build_workspace_guard(settings: Settings) -> PathGuard | None:
             extra={"event": "workspace_root_invalid", "workspace_root": settings.workspace_root},
         )
         return None
+
+
+def _build_speech_service(settings: Settings) -> SpeechService | None:
+    """Anahtar tanımlıysa seslendirme servisini kurar, değilse None.
+
+    None dönmesi bir hata değildir: yetenek kapalıdır ve uçlar 503 döner.
+    Arayüz bunu görünce tarayıcının kendi ses motoruna düşer.
+    """
+    if not settings.elevenlabs_api_key.strip():
+        return None
+    return SpeechService(
+        api_key=settings.elevenlabs_api_key,
+        voice_id=settings.elevenlabs_voice_id,
+        model_id=settings.elevenlabs_model_id,
+        timeout_seconds=settings.elevenlabs_timeout_seconds,
+        max_chars=settings.elevenlabs_max_chars,
+    )
 
 
 def _build_command_policy(settings: Settings) -> CommandPolicy:
@@ -979,6 +998,10 @@ def create_app(
     # çalışmaya devam etmek, denetimin hiç olmaması demek olurdu.
     app.state.workspace_guard = None
     app.state.network_guard = None
+    # Seslendirme yalnızca anahtar VARSA kurulur. Anahtarsız bir servis
+    # nesnesi tutmak, her çağrının 401 ile dönmesi ve kullanıcının bunu
+    # "bozuk" sanması demekti; kurulmamış olması ise "kapalı" demektir.
+    app.state.speech_service = _build_speech_service(active_settings)
     app.state.ui_action_bus = UIActionBus()
     app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
@@ -1014,6 +1037,7 @@ def create_app(
     app.include_router(notes_router, prefix="/api")
     app.include_router(files_router, prefix="/api")
     app.include_router(research_router, prefix="/api")
+    app.include_router(speech_router, prefix="/api")
     app.include_router(ui_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 

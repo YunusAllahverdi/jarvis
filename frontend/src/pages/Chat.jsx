@@ -1,10 +1,10 @@
 // Chat page — streaming conversation with SSE, curtain-rise entrance, session sidebar.
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowUp, RotateCcw, Trash2, Plus, MessageSquare, Mic } from "lucide-react";
+import { ArrowUp, RotateCcw, Trash2, Plus, MessageSquare, Mic, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { api, streamChat } from "@/lib/api";
 import { useOrb } from "@/state/orb";
-import { useVoice } from "@/lib/voice";
+import { useSpeak, useVoice } from "@/lib/voice";
 
 function useAutoScroll(dep) {
   const ref = useRef(null);
@@ -27,6 +27,29 @@ export default function Chat() {
   const abortRef = useRef(null);
 
   const scrollRef = useAutoScroll(messages);
+
+  const speaker = useSpeak();
+  const [speakReplies, setSpeakReplies] = useState(() => {
+    try {
+      return window.localStorage.getItem("jarvis.speak") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSpeak = () => {
+    setSpeakReplies((on) => {
+      const next = !on;
+      try {
+        window.localStorage.setItem("jarvis.speak", next ? "1" : "0");
+      } catch {
+        // Yazılamaması hata değil; tercih yalnızca kalıcı olmaz.
+      }
+      // Kapatmak susturmayı da kapsamalı: aksi hâlde o an okunan cevap
+      // sonuna kadar devam ederdi.
+      if (!next) speaker.stop();
+      return next;
+    });
+  };
   const voice = useVoice({ onFinal: (t) => send(t), onInterim: (t) => setInput(t) });
   const talk = () => {
     if (!voice.supported) { toast("Bu tarayıcı sesli girişi desteklemiyor."); return; }
@@ -98,6 +121,9 @@ export default function Chat() {
           if (last?.streaming) copy[copy.length - 1] = { role: "assistant", content: acc || last.content };
           return copy;
         });
+        // Okuma cevap TAMAMLANDIKTAN sonra: parça geldikçe okumak,
+        // yarım cümleleri üst üste seslendirmek olurdu.
+        if (speakReplies && acc.trim()) void speaker.speak(acc);
         setBusy(false);
         setOrb("idle", { label: "Hazır" });
         refreshSessions();
@@ -225,6 +251,15 @@ export default function Chat() {
                   durdur
                 </button>
               ) : null}
+              <button
+                onClick={toggleSpeak}
+                className={`rounded-full h-10 w-10 flex items-center justify-center transition ${speakReplies ? "text-white bg-white/10" : "text-secondary hover:text-white hover:bg-white/10"}`}
+                aria-label={speakReplies ? "Sesli yanıtı kapat" : "Sesli yanıtı aç"}
+                title={speakReplies ? "Sesli yanıt açık" : "Sesli yanıt kapalı"}
+                data-testid="chat-speak"
+              >
+                {speakReplies ? <Volume2 size={17} /> : <VolumeX size={17} />}
+              </button>
               <button
                 onClick={talk}
                 className={`rounded-full h-10 w-10 flex items-center justify-center transition ${voice.listening ? "bg-[#ff3b30] text-white animate-pulse" : "text-secondary hover:text-white hover:bg-white/10"}`}
