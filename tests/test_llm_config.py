@@ -222,3 +222,92 @@ def test_a_failing_close_does_not_block_the_switch() -> None:
     _run(switchable.switch(_FakeProvider("ikinci")))
 
     assert _run(switchable.generate([ChatMessage(role="user", content="x")])) == "ikinci"
+
+
+# ---------------------------------------------------------------------------
+# 12. Başka bir sürümün yazdığı kayıt uygulamayı çökertmez
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_provider_kind_falls_back_instead_of_crashing(tmp_path: Path) -> None:
+    """Veritabanı sürümler arasında paylaşılır ve tanınmayan bir tür yazılmış olabilir.
+
+    Bu GERÇEK bir olaydan geliyor: başka bir sürüm `kind='anthropic'` yazmıştı
+    ve okuma anında istisna fırlatmak uygulamayı AÇILIŞTA öldürüyordu —
+    kullanıcı ayarı düzeltebileceği paneli bile açamıyordu, çünkü sunucu hiç
+    ayağa kalkmıyordu.
+
+    O olayın kendi çözümü `anthropic`'i DESTEKLEMEK oldu, bu yüzden test artık
+    başka bir bilinmeyen değer kullanıyor. Korumanın kendisi duruyor: sonraki
+    tanınmayan tür de aynı şekilde açılışı öldürebilirdi.
+    """
+    import sqlite3
+
+    db = str(tmp_path / "jarvis.db")
+    store = LLMConfigStore(db)
+    store.update(
+        kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m"
+    )
+
+    # Başka bir sürümün yazdığı, burada tanınmayan bir tür.
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE llm_config SET kind = 'gelecekteki-servis' WHERE id = 1")
+
+    config = LLMConfigStore(db).get()
+
+    assert config.kind is LLMProviderKind.OLLAMA
+
+
+def test_anthropic_kind_round_trips(tmp_path: Path) -> None:
+    """Olayın asıl çözümü: `anthropic` artık geçerli bir tür.
+
+    Varsayılana düşmemeli — düşseydi kullanıcının kaydettiği sağlayıcı
+    sessizce Ollama'ya dönerdi ve hata "model bulunamadı" olarak görünürdü.
+    """
+    db = str(tmp_path / "jarvis.db")
+    store = LLMConfigStore(db)
+    store.update(
+        kind=LLMProviderKind.ANTHROPIC,
+        base_url="https://api.anthropic.com",
+        model="claude-haiku-4-5",
+        api_key="sk-ant-test",
+    )
+
+    config = LLMConfigStore(db).get()
+
+    assert config.kind is LLMProviderKind.ANTHROPIC
+    assert config.model == "claude-haiku-4-5"
+    assert config.has_api_key is True
+
+
+def test_anthropic_config_builds_an_anthropic_provider(tmp_path: Path) -> None:
+    """Kayıtlı tür gerçekten o sağlayıcıyı kurmalı."""
+    from app.adapters.llm.anthropic import AnthropicProvider
+
+    db = str(tmp_path / "jarvis.db")
+    store = LLMConfigStore(db)
+    store.update(
+        kind=LLMProviderKind.ANTHROPIC,
+        base_url="https://api.anthropic.com",
+        model="claude-haiku-4-5",
+        api_key="sk-ant-test",
+    )
+
+    assert isinstance(LLMConfigStore(db).build_provider(), AnthropicProvider)
+
+
+def test_unknown_kind_still_builds_a_usable_provider(tmp_path: Path) -> None:
+    """Sağlayıcı kurulumu da aynı yoldan geçer; orada da çökmemeli."""
+    import sqlite3
+
+    db = str(tmp_path / "jarvis.db")
+    store = LLMConfigStore(db)
+    store.update(
+        kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m"
+    )
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE llm_config SET kind = 'bilinmeyen-servis' WHERE id = 1")
+
+    provider = LLMConfigStore(db).build_provider()
+
+    assert isinstance(provider, OllamaProvider)

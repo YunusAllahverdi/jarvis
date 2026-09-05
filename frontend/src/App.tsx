@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { JarvisShell } from './design/JarvisShell';
+import { Desk } from './desk/Desk';
 import { TokenGate } from './design/TokenGate';
 import { AuthRequiredError, apiClient } from './api/client';
 
@@ -56,7 +56,7 @@ function App() {
     return <TokenGate message={message} onAuthorized={() => setStatus('ready')} />;
   }
 
-  return <JarvisShell />;
+  return <Desk />;
 }
 
 export default App;

@@ -138,7 +138,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 
-export type LLMProviderKind = 'ollama' | 'openai_compatible';
+export type LLMProviderKind = 'ollama' | 'openai_compatible' | 'anthropic';
 
 export interface LLMConfig {
   kind: LLMProviderKind;
@@ -264,6 +264,53 @@ export interface NoteView {
   updated_at: string;
   /** "user" veya "agent" — kullanıcı kendi yazdığını ayırt edebilmelidir. */
   created_by: string;
+}
+
+
+export interface ApprovalView {
+  approval_id: string;
+  tool_name: string;
+  /** Argümanlar bilerek gelir: kullanıcı neyi onayladığını görmeden onaylayamaz. */
+  arguments: Record<string, unknown>;
+  permission: string;
+  reason: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ApprovalOutcome {
+  approval_id: string;
+  status: 'approved' | 'rejected';
+  tool_name: string;
+  success: boolean | null;
+  error_message: string | null;
+}
+
+export interface FileEntryView {
+  name: string;
+  /** Çalışma köküne GÖRELİ yol; bir sonraki listelemede geri verilir. */
+  path: string;
+  is_dir: boolean;
+  size_bytes: number | null;
+  modified_at: string | null;
+}
+
+export interface FileListView {
+  path: string;
+  /** Kökteyken null — yukarı çıkılamaz. */
+  parent: string | null;
+  entries: FileEntryView[];
+  truncated: boolean;
+}
+
+export interface FetchedPage {
+  url: string;
+  status_code: number;
+  title: string;
+  content: string;
+  truncated: boolean;
+  /** Yönlendirme izlenmez; hedef yalnızca bildirilir. */
+  redirected_to: string | null;
 }
 
 /** Ajanın açmasını istediği panel. Kapalı bir küme — backend'deki enum. */
@@ -399,6 +446,44 @@ export const apiClient = {
     return getJson<{ actions: UIAction[]; count: number }>(
       `/ui/actions${params.toString() ? `?${params}` : ''}`,
     );
+  },
+
+
+  /**
+   * Çalışma kökü altındaki bir klasörü listeler.
+   *
+   * Kök ayarlanmamışsa 503 döner; pencere bunu "kapalı" olarak gösterir.
+   */
+  async listFiles(path = '') {
+    const params = new URLSearchParams();
+    if (path) params.set('path', path);
+    return getJson<FileListView>(`/files${params.toString() ? `?${params}` : ''}`);
+  },
+
+  /** Bir adresi sunucu üzerinden getirir ve metnini döndürür. */
+  async fetchPage(url: string): Promise<FetchedPage> {
+    return sendJson<FetchedPage>('/research/fetch', 'POST', { url });
+  },
+
+
+  /** Ajanın onay bekleyen araç çağrıları. */
+  async getApprovals(sessionId?: string | null) {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('session_id', sessionId);
+    return getJson<{ pending: ApprovalView[] }>(
+      `/approvals${params.toString() ? `?${params}` : ''}`,
+    );
+  },
+
+  /**
+   * Bir onay isteğini sonuçlandırır.
+   *
+   * Gövdede yalnızca karar taşınır. Araç adı ve argümanlar GÖNDERİLMEZ:
+   * onaylanan ile çalıştırılanın ayrışmaması için sunucu bunları kendi
+   * kaydından okur.
+   */
+  async decideApproval(id: string, decision: 'approve' | 'reject') {
+    return sendJson<ApprovalOutcome>(`/approvals/${id}`, 'POST', { decision });
   },
 
   /** Bir notu kalıcı olarak siler. */

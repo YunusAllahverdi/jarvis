@@ -25,8 +25,12 @@ from enum import StrEnum
 from pathlib import Path
 from threading import RLock
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from app.adapters.llm.anthropic import (
+    DEFAULT_BASE_URL as ANTHROPIC_BASE_URL,
+    AnthropicProvider,
+)
 from app.adapters.llm.base import LLMProvider
 from app.adapters.llm.ollama import OllamaProvider
 from app.adapters.llm.openai_compatible import OpenAICompatibleProvider
@@ -43,6 +47,15 @@ class LLMProviderKind(StrEnum):
 
     OPENAI_COMPATIBLE = "openai_compatible"
     """OpenAI sohbet sözleşmesini konuşan her servis."""
+
+    ANTHROPIC = "anthropic"
+    """Anthropic Messages API.
+
+    Ayrı bir tür olması gerekti: Anthropic OpenAI sözleşmesini konuşmaz —
+    farklı uç nokta, farklı kimlik başlığı, system mesajının ayrı alanda
+    taşınması ve blok tabanlı yanıt biçimi. `openai_compatible` altına
+    sıkıştırılsaydı hiçbir istek çalışmazdı.
+    """
 
 
 class LLMConfig(BaseModel):
@@ -76,6 +89,13 @@ def build_llm_provider(
 
     Anahtar doğrudan sağlayıcıya verilir, hiçbir yere kopyalanmaz.
     """
+    if kind is LLMProviderKind.ANTHROPIC:
+        return AnthropicProvider(
+            base_url=base_url or ANTHROPIC_BASE_URL,
+            model=model,
+            api_key=api_key,
+            timeout_seconds=timeout_seconds,
+        )
     if kind is LLMProviderKind.OPENAI_COMPATIBLE:
         return OpenAICompatibleProvider(
             base_url=base_url,
@@ -131,18 +151,44 @@ class LLMConfigStore:
             conn.execute(_DDL_CONFIG)
 
     def get(self) -> LLMConfig:
-        """Anahtarsız yapılandırmayı döndürür; kayıt yoksa varsayılanı."""
+        """Anahtarsız yapılandırmayı döndürür; kayıt yoksa varsayılanı.
 
+        BOZUK BİR KAYIT UYGULAMAYI ÇÖKERTMEZ. Bu satır bir başka sürüm
+        tarafından yazılmış olabilir ve o sürüm burada tanınmayan bir
+        sağlayıcı türü kullanıyor olabilir — veritabanı sürümler arasında
+        paylaşılıyor. Tanınmayan bir değerde istisna fırlatmak, uygulamanın
+        açılışta ölmesi demekti: kullanıcı ayarı DÜZELTEBİLECEĞİ paneli bile
+        açamazdı, çünkü sunucu hiç ayağa kalkmıyordu.
+
+        Bu yüzden tanınmayan tür varsayılana düşer ve durum loglanır.
+        Kullanıcı panelden geçerli bir sağlayıcı seçtiğinde satır düzelir.
+        """
         row = self._row()
         if row is None:
             return self._default.model_copy()
-        return LLMConfig(
-            kind=LLMProviderKind(row["kind"]),
-            base_url=row["base_url"],
-            model=row["model"],
-            timeout_seconds=row["timeout_seconds"],
-            has_api_key=bool(row["api_key"]),
-        )
+
+        try:
+            kind = LLMProviderKind(row["kind"])
+        except ValueError:
+            logger.warning(
+                "llm_config_unknown_kind",
+                extra={"stored_kind": str(row["kind"])[:64]},
+            )
+            kind = self._default.kind
+
+        try:
+            return LLMConfig(
+                kind=kind,
+                base_url=row["base_url"],
+                model=row["model"],
+                timeout_seconds=row["timeout_seconds"],
+                has_api_key=bool(row["api_key"]),
+            )
+        except ValidationError:
+            # Alanların kendisi de bozuk olabilir (ör. negatif timeout).
+            # Aynı gerekçe: açılışı engellemek yerine varsayılana dönülür.
+            logger.warning("llm_config_row_invalid")
+            return self._default.model_copy()
 
     def update(
         self,

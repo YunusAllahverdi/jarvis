@@ -21,9 +21,11 @@ from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coding import router as coding_router
+from app.api.routes.files import router as files_router
 from app.api.routes.health import router as health_router
 from app.api.routes.insight import router as insight_router
 from app.api.routes.notes import router as notes_router
+from app.api.routes.research import router as research_router
 from app.api.routes.ui import router as ui_router
 from app.api.static import mount_frontend
 from app.notes.store import NoteStore
@@ -825,6 +827,15 @@ def create_app(
             chat_tool_executor.set_audit_log(startup_audit_log)
 
         workspace_guard = _build_workspace_guard(active_settings)
+        # Dosya gezgini ucu AYNI bekçiyi kullanır. Ayrı bir tane kurulsaydı
+        # iki kural kümesi zamanla ayrışır ve biri gizlediğini diğeri
+        # göstermeye devam ederdi.
+        app_instance.state.workspace_guard = workspace_guard
+        app_instance.state.network_guard = (
+            NetworkGuard(allowed_domains=active_settings.research_allowed_domains)
+            if active_settings.research_enabled
+            else None
+        )
         if workspace_guard is not None and auto_wire_memory_on_startup:
             app_instance.state.checkpoint_store = SQLiteCheckpointStore(
                 _resolve_audit_db_path(active_settings), root=workspace_guard.root
@@ -860,13 +871,7 @@ def create_app(
                 policy_boundary=agent_policy,
                 note_store=getattr(app_instance.state, "note_store", None),
                 notes_writable=active_settings.notes_writable,
-                network_guard=(
-                    NetworkGuard(
-                        allowed_domains=active_settings.research_allowed_domains
-                    )
-                    if active_settings.research_enabled
-                    else None
-                ),
+                network_guard=app_instance.state.network_guard,
                 research_timeout_seconds=active_settings.research_timeout_seconds,
                 ui_action_bus=app_instance.state.ui_action_bus,
                 terminal_enabled=active_settings.terminal_enabled,
@@ -965,6 +970,11 @@ def create_app(
     # lifespan beklemeden burada kurulabilir. Kalıcı olmaması bilinçlidir:
     # bir panel açma isteği ANLIK bir niyettir ve yeniden başlatmadan sonra
     # açılması, bağlamı çoktan kaybolmuş bir pencere göstermek olurdu.
+    # Bekçiler lifespan'de kurulur. O ana kadar None kalmaları, dosya ve
+    # web uçlarının "kapalı" demesini sağlar; kurulmamış bir bekçiyle
+    # çalışmaya devam etmek, denetimin hiç olmaması demek olurdu.
+    app.state.workspace_guard = None
+    app.state.network_guard = None
     app.state.ui_action_bus = UIActionBus()
     app.state.llm_provider = active_provider if using_default_provider else None
     app.state.chat_tool_executor = chat_tool_executor
@@ -998,6 +1008,8 @@ def create_app(
     app.include_router(coding_router, prefix="/api")
     app.include_router(insight_router, prefix="/api")
     app.include_router(notes_router, prefix="/api")
+    app.include_router(files_router, prefix="/api")
+    app.include_router(research_router, prefix="/api")
     app.include_router(ui_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
 
