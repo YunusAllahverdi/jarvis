@@ -1,0 +1,54 @@
+{
+  "project_name": "J.A.R.V.I.S AI Operating System (Turkish UI)",
+  "language": "Turkish (TR)",
+  "theme": {
+    "mode": "dark",
+    "background_base": "Deep Graphite (#090A0F)",
+    "surface_card": "Graphite Slate (#11131B / #161922)",
+    "accent_primary": "Electric Blue (#00A3FF)",
+    "accent_glow": "Cyan Electric Blur (#00F0FF)",
+    "status_colors": {
+      "idle": "#00A3FF",
+      "listening": "#00F0FF",
+      "thinking": "#A855F7",
+      "streaming": "#10B981",
+      "error": "#EF4444",
+      "amber_warning": "#F59E0B"
+    },
+    "border": "rgba(0, 163, 255, 0.15)"
+  },
+  "typography": {
+    "heading_font": "Space Grotesk / Syne / Outfit",
+    "body_font": "Inter / JetBrains Mono",
+    "mono_font": "JetBrains Mono / Fira Code",
+    "h1": "text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight",
+    "h2": "text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight",
+    "h3": "text-xl sm:text-2xl font-medium",
+    "body": "text-sm sm:text-base leading-relaxed"
+  },
+  "layout_strategy": {
+    "mode": "Cinematic Floating Spatial OS",
+    "structure": [
+      "Home Page: Giant procedural WebGL Canvas AI Orb centered, Turkish prompt input box below, shortcut keys HUD, smooth bottom-to-top curtain transition to Chat view",
+      "Chat Page: Minimalist, clean conversation view with streaming status, SSE support, voice state indicators, message history, clear/reset, export options",
+      "Cowork Page: macOS Traffic Light Window Chrome (Red/Yellow/Green interactive controls), tabbed OS interface containing Notes, Calculator, Terminal, Memory Browser, Approvals, Council Members, Provider Settings, Checkpoints, Coding Studio, Diagnostics",
+      "Persistent Bottom-Right Orb Widget: Mini procedural canvas orb with state synchronization (idle, listening, thinking, streaming, error) accessible from anywhere",
+      "Global Command Palette (Cmd+K / Ctrl+K): Keyboard-first command palette with Turkish quick actions for navigation, model switching, memory lookup, and tool triggering"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a premium dark-graphite futuristic Turkish-language frontend interface for J.A.R.V.I.S.",
+    "Implement real working interactive controls for all 3 main pages (Home, Chat, Cowork) and floating bottom-right Orb.",
+    "Ensure all user-facing strings are in natural Turkish language (e.g. 'J.A.R.V.I.S Sistemine Hoş Geldiniz', 'Komut veya soru yazın...', 'Cowork Çalışma Alanı', 'Sistem Tanılama', 'Sözleşme ve Onaylar', 'Jarvis yazdı').",
+    "Use Electric Blue (#00A3FF) and Cyan glow (#00F0FF) over Deep Graphite (#090A0F) background.",
+    "Connect to FastAPI backend endpoints (/api/chat, /api/notes, /api/approvals, /api/council, /api/providers, /api/memory, /api/coding-studio, /api/diagnostics) with robust fallback/mock support if specific endpoints are initializing.",
+    "Add 'data-testid' to every button, input, tab, card, modal, and key status element following kebab-case role conventions."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Never use pure black (#000) or generic gray gradients. Use deep graphite with electric blue glass accents.",
+    "Do NOT use Space Grotesk for dashboard body text; use JetBrains Mono or Inter.",
+    "Provide responsive layouts for mobile and desktop screens with custom scrollbars and backdrop-blur effects.",
+    "Ensure high APCA accessibility contrast on buttons, inputs, and tab items."
+  ],
+  "image_urls": []
+}
