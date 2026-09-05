@@ -486,6 +486,33 @@ export const apiClient = {
     return sendJson<ApprovalOutcome>(`/approvals/${id}`, 'POST', { decision });
   },
 
+  /**
+   * Metni sunucudaki ElevenLabs sesiyle seslendirir ve sesi döndürür.
+   *
+   * Anahtar SUNUCUDA durur; buraya hiç gelmez. Tarayıcıdan doğrudan
+   * ElevenLabs'e gidilseydi anahtarın derlenmiş JavaScript'e gömülmesi
+   * gerekirdi ve sayfayı açan herkes onu okuyabilirdi.
+   *
+   * Yetenek kapalıysa (anahtar yok) sunucu 503 döner ve bu çağrı hata
+   * fırlatır; çağıran tarayıcının kendi ses motoruna düşer.
+   */
+  async synthesizeSpeech(text: string, voiceId?: string): Promise<Blob> {
+    const response = await request('/speech/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice_id: voiceId ?? null }),
+    });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.blob();
+  },
+
+  /** Hesaptaki sesleri listeler; kimlikler ezberlenemeyecek dizelerdir. */
+  async getVoices() {
+    return getJson<{ voices: { voice_id: string; name: string }[]; current: string }>(
+      '/speech/voices',
+    );
+  },
+
   /** Bir notu kalıcı olarak siler. */
   async deleteNote(id: string): Promise<void> {
     const response = await request(`/notes/${id}`, { method: 'DELETE' });

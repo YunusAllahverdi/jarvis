@@ -138,6 +138,39 @@ class Settings(BaseSettings):
     # otomatik olarak kaydedilir. Boş bırakılırsa Maps araçları hiç var olmaz.
     maps_api_key: str = ""
 
+    # ElevenLabs seslendirme (TTS)
+    # ------------------------------------------------------------------
+    # Anahtar tanımlıysa /api/speech/* uçları açılır; boşsa uçlar 503
+    # döner ve arayüz tarayıcının kendi ses motorunu kullanmaya devam eder.
+    #
+    # DİKKAT — bu ayar `JARVIS_` önekiyle okunur: .env dosyasına
+    # `JARVIS_ELEVENLABS_API_KEY=...` yazılır. Önceki denemede kod
+    # `os.getenv("ELEVENLABS_API_KEY")` kullanıyordu ve bu HİÇBİR ZAMAN
+    # çalışmıyordu: `.env` bu uygulamada pydantic-settings ile okunuyor,
+    # o da değerleri işlem ortamına (os.environ) koymuyor. Sonuç, anahtar
+    # dosyada dururken sürekli "anahtar tanımlı değil" hatasıydı.
+    elevenlabs_api_key: str = ""
+
+    # Varsayılan ses. ElevenLabs'in ses kimlikleri rastgele dizelerdir
+    # ("21m00Tcm4TlvDq8ikWAM" = Rachel); insan okunur adlar KABUL EDİLMEZ.
+    # Önceki denemedeki "salli" bir AWS Polly adıydı ve geçerli bir
+    # anahtarla bile 404 dönerdi.
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    """Türkçe için çok dilli model.
+
+    `eleven_turbo_v2_5` daha hızlıdır ama Türkçe telaffuzu belirgin
+    biçimde bozuktur; bu uygulamanın arayüzü tamamen Türkçe.
+    """
+
+    elevenlabs_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+
+    # Seslendirilecek en uzun metin.
+    # Sınır maliyet içindir: ElevenLabs karakter başına ücretlendirir ve
+    # sınırsız bir alan, tek bir istekle aylık kotanın tükenmesi demekti.
+    elevenlabs_max_chars: int = Field(default=2500, ge=1, le=10000)
+
     # Kimlik doğrulama
     # ------------------------------------------------------------------
     # TÜM uçlar için anahtar (sağlık ucu hariç). Boşsa uygulama yalnızca

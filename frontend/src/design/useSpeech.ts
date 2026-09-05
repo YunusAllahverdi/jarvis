@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiClient } from '../api/client';
 
 /**
  * Sesli cevap (TTS) — tarayıcının kendi konuşma motoru.
@@ -56,6 +57,8 @@ export interface Speech {
 }
 
 export const useSpeech = (): Speech => {
+  // Tarayıcı motorunun varlığı. Sunucu sesi ayrıca denenir; bu bayrak
+  // yalnızca yedeğin kullanılabilirliğini anlatır.
   const supported =
     typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined';
 
@@ -69,6 +72,19 @@ export const useSpeech = (): Speech => {
    * (kapalı) değeri görür ve sessizce hiçbir şey yapmazdı — kullanıcı da
    * sesi açtığını duyamazdı. Ref, aynı olay içinde güncel değeri verir. */
   const enabledRef = useRef(false);
+
+  /* Sunucu sesi (ElevenLabs) için çalan ses öğesi.
+   *
+   * Tarayıcı motoruyla AYNI ANDA çalmamalı: ikisi de konuşursa cevap
+   * üst üste iki sesle duyulur. Bu yüzden her yeni konuşma ikisini de
+   * susturarak başlar. */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  /* Sunucu sesi var mı? Bilinene kadar `null`.
+   *
+   * Bir kez sorulur ve saklanır: her cevapta yoklamak, kapalı bir
+   * yetenek için her seferinde bir 503 turu atmak demekti. */
+  const serverVoiceRef = useRef<boolean | null>(null);
 
   const applyEnabled = useCallback((next: boolean) => {
     enabledRef.current = next;
@@ -103,20 +119,21 @@ export const useSpeech = (): Speech => {
     };
   }, [supported]);
 
+  /** Her iki motoru da susturur. */
   const stop = useCallback(() => {
-    if (!supported) return;
-    window.speechSynthesis.cancel();
+    if (supported) window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
     setSpeaking(false);
   }, [supported]);
 
-  const speak = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      // State değil REF okunur; gerekçe yukarıda.
-      if (!supported || !enabledRef.current || !trimmed) return;
-
-      // Yeni cevap öncekini keser; sıraya alınsaydı Jarvis eski cevapları
-      // arka arkaya okurdu.
+  /** Tarayıcının kendi motoruyla okur. Her zaman kullanılabilir yedek. */
+  const speakWithBrowser = useCallback(
+    (trimmed: string) => {
+      if (!supported) return;
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(trimmed);
@@ -129,6 +146,68 @@ export const useSpeech = (): Speech => {
       window.speechSynthesis.speak(utterance);
     },
     [supported],
+  );
+
+  /**
+   * Sunucudaki ElevenLabs sesiyle okur.
+   *
+   * Neden sunucudan: ElevenLabs anahtarı sunucuda durur ve oraya
+   * girmez — tarayıcıdan doğrudan çağrılsaydı anahtarın derlenmiş
+   * JavaScript'e gömülmesi gerekirdi.
+   *
+   * Başarısızlıkta `false` döner; çağıran tarayıcı motoruna düşer.
+   * Sessiz kalmak, kotası dolduğunda sesin sebepsizce kesilmesi
+   * demek olurdu.
+   */
+  const speakWithServer = useCallback(async (trimmed: string): Promise<boolean> => {
+    try {
+      const blob = await apiClient.synthesizeSpeech(trimmed);
+      // Beklerken kullanıcı sesi kapatmış ya da yeni bir cevap gelmiş
+      // olabilir; o durumda bu ses artık istenmiyor.
+      if (!enabledRef.current) return true;
+
+      const audio = new Audio(URL.createObjectURL(blob));
+      audioRef.current = audio;
+      const release = () => {
+        URL.revokeObjectURL(audio.src);
+        setSpeaking(false);
+      };
+      audio.onended = release;
+      audio.onerror = release;
+
+      setSpeaking(true);
+      await audio.play();
+      return true;
+    } catch {
+      // Anahtar yok (503), kota doldu (502) ya da ağ gitti.
+      return false;
+    }
+  }, []);
+
+  const speak = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      // State değil REF okunur; gerekçe yukarıda.
+      if (!enabledRef.current || !trimmed) return;
+
+      // Yeni cevap öncekini keser — İKİ motoru da. Sıraya alınsaydı
+      // Jarvis eski cevapları arka arkaya okurdu; yalnızca biri
+      // susturulsaydı cevap üst üste iki sesle duyulurdu.
+      stop();
+
+      // Sunucu sesi kapalı olduğu BİLİNİYORSA hiç denenmez; her cevapta
+      // boşuna bir 503 turu atmak gecikme eklerdi.
+      if (serverVoiceRef.current === false) {
+        speakWithBrowser(trimmed);
+        return;
+      }
+
+      void speakWithServer(trimmed).then((ok) => {
+        serverVoiceRef.current = ok;
+        if (!ok) speakWithBrowser(trimmed);
+      });
+    },
+    [stop, speakWithBrowser, speakWithServer],
   );
 
   /**
@@ -145,12 +224,9 @@ export const useSpeech = (): Speech => {
     writeStoredPreference(next);
     // Kapatmak susturmayı da kapsamalı: aksi hâlde kullanıcı sesi
     // kapattığında o an okunan cevap sonuna kadar devam ederdi.
-    if (!next && supported) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-    }
+    if (!next) stop();
     return next;
-  }, [supported, applyEnabled]);
+  }, [applyEnabled, stop]);
 
   return { supported, enabled, speaking, toggle, speak, stop };
 };
