@@ -15,6 +15,7 @@ from app.agent.context import ContextBuilder
 from app.agent.llm_policy import LLMDecisionPolicy
 from app.agent.policy import DecisionPolicy, RuleBasedDecisionPolicy
 from app.agent.runner import AgentRunner
+from app.api.errors import register_exception_handlers
 from app.api.routes.admin import router as admin_router
 from app.api.routes.agent import router as agent_router
 from app.api.routes.approvals import router as approvals_router
@@ -36,6 +37,7 @@ from app.coding.review import CodeReviewer
 from app.coding.verification import Verifier
 from app.config.settings import Settings, get_settings
 from app.core.logging import configure_logging
+from app.core.request_context import RequestIdMiddleware
 from app.council.gate import CouncilGate
 from app.council.models import CouncilMember
 from app.learning.sqlite_trait_store import SQLiteUserTraitStore
@@ -580,7 +582,7 @@ def create_app(
     """Bağımlılıkları enjekte edilebilir bir FastAPI uygulaması oluşturur."""
 
     active_settings = settings or get_settings()
-    configure_logging(active_settings.log_level)
+    configure_logging(active_settings.log_level, active_settings.log_format)
 
     # provider enjekte edilmediyse gerçek (üretim) Ollama sağlayıcısı kurulur.
     # Bellek yığınının otomatik bağlanması da yalnızca bu durumda yapılır: bir
@@ -972,6 +974,12 @@ def create_app(
         token=active_settings.api_token,
         host=active_settings.host,
     )
+    # Request-id EN DIŞTA eklenir (Starlette'te en son eklenen en dıştadır):
+    # kimlik doğrulama reddi dâhil HER yanıt kimliği taşır ve reddedilen
+    # isteğin log satırları da ilişkilendirilebilir.
+    app.add_middleware(RequestIdMiddleware)
+    # Çerçevenin ürettiği hatalar (doğrulama, 404, 500) da tek zarfa bağlanır.
+    register_exception_handlers(app)
     app.state.settings = active_settings
     app.state.chat_orchestrator = chat_orchestrator
     # Kalıcı depo lifespan'de takas edilir; o ana kadar RAM deposu geçerlidir.

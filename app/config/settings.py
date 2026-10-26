@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # Log biçimi. "json": her satır bir JSON nesnesi (üretim, makine tüketimi).
+    # "text": insan tarafından okunabilir tek satır (yerel geliştirme).
+    log_format: Literal["json", "text"] = "json"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str | None = None
     ollama_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
