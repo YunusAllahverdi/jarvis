@@ -48,6 +48,8 @@ from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.notes.store import NoteStore
+from app.plugins import BUILTIN_PLUGINS, PluginContext, PluginRegistry
+from app.plugins.example import ExamplePlugin
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.auth import ApiTokenMiddleware
@@ -72,16 +74,7 @@ from app.services.speech import SpeechService
 from app.services.sqlite_conversation import SQLiteConversationStore
 from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
-from app.tools.defaults import (
-    build_default_tool_registry,
-    register_context_tools,
-    register_filesystem_tools,
-    register_maps_tools,
-    register_note_tools,
-    register_research_tool,
-    register_terminal_tool,
-    register_ui_tool,
-)
+from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 from app.ui.actions import UIActionBus
@@ -487,6 +480,7 @@ def _build_agent_stack(
     terminal_timeout_seconds: float = 60.0,
     timezone_name: str | None = None,
     maps_api_key: str = "",
+    settings: Settings | None = None,
 ) -> AgentService:
     """Agent karar katmanını mevcut public servislerden kurar.
 
@@ -501,32 +495,32 @@ def _build_agent_stack(
     bağlam bölümünün boş kalmasına ve ilgili tool'un kaydedilmemesine yol açar.
     """
     agent_registry = build_default_tool_registry(timezone_name=timezone_name)
-    registered = register_context_tools(
-        agent_registry, memory_retrieval=memory_retrieval, user_model=user_model
-    )
-    # Dosya araçları YALNIZCA agent registry'sine eklenir; sohbetin LLM'e
-    # sunduğu tool yüzeyi değişmez.
-    registered += register_filesystem_tools(
-        agent_registry,
-        guard=workspace_guard,
-        writable=workspace_writable,
-        journal=change_journal,
-    )
-    # Notlar ve araştırma da yalnızca agent registry'sine eklenir; sohbetin
-    # LLM'e sunduğu tool yüzeyi değişmez.
-    registered += register_note_tools(agent_registry, store=note_store, writable=notes_writable)
-    registered += register_research_tool(
-        agent_registry, guard=network_guard, timeout_seconds=research_timeout_seconds
-    )
-    registered += register_ui_tool(agent_registry, bus=ui_action_bus)
-    registered += register_terminal_tool(
-        agent_registry,
-        guard=workspace_guard,
+    # Tüm yetenekler TEK bir yerden, eklenti kaydından eklenir. Sıra korunur;
+    # her eklenti varsayılan KAPALI'dır ve kaydettiği araçlar `policy_boundary`
+    # (ToolPermissionPolicy) + onay akışından geçer — burada atlanamaz.
+    active_settings = settings or get_settings()
+    plugin_context = PluginContext(
+        registry=agent_registry,
+        settings=active_settings,
+        timezone_name=timezone_name,
+        memory_retrieval=memory_retrieval,
+        user_model=user_model,
+        workspace_guard=workspace_guard,
+        workspace_writable=workspace_writable,
+        change_journal=change_journal,
         command_policy=command_policy,
-        enabled=terminal_enabled,
-        max_timeout_seconds=terminal_timeout_seconds,
+        terminal_enabled=terminal_enabled,
+        terminal_timeout_seconds=terminal_timeout_seconds,
+        note_store=note_store,
+        notes_writable=notes_writable,
+        network_guard=network_guard,
+        research_timeout_seconds=research_timeout_seconds,
+        ui_action_bus=ui_action_bus,
+        maps_api_key=maps_api_key,
     )
-    registered += register_maps_tools(agent_registry, api_key=maps_api_key)
+    plugin_registry = PluginRegistry([*BUILTIN_PLUGINS, ExamplePlugin()])
+    registrations = plugin_registry.apply(plugin_context)
+    registered = [name for reg in registrations for name in reg.tools]
     context_builder = ContextBuilder(
         tool_registry=agent_registry,
         policy=policy_boundary,
@@ -907,6 +901,7 @@ def create_app(
                 terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
                 timezone_name=active_settings.timezone or None,
                 maps_api_key=active_settings.maps_api_key,
+                settings=active_settings,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor

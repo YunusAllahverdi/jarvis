@@ -220,6 +220,15 @@ class Settings(BaseSettings):
     # Aynı anda bekleyebilecek en fazla onay isteği.
     approval_max_pending: int = Field(default=50, ge=1, le=500)
 
+    # Eklentiler (plugin)
+    # ------------------------------------------------------------------
+    # Yeni araç/entegrasyonların tek yerden eklendiği eklenti sistemi. Bir
+    # eklenti adı BURADA geçmedikçe KAPALIDIR; varsayılan liste boştur, yani
+    # yeni bir yetenek kullanıcı açıkça açmadan asla etkinleşmez. Eklentinin
+    # kaydettiği araçlar yine ToolPermissionPolicy ve onay akışından geçer.
+    # Örnek: JARVIS_ENABLED_PLUGINS=["example"]
+    enabled_plugins: list[str] = Field(default_factory=list)
+
     # LLM Council
     # ------------------------------------------------------------------
     # VARSAYILAN KAPALI. Council tur başına N+N+1 LLM çağrısı demektir ve
