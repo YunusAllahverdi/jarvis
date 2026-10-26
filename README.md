@@ -61,12 +61,23 @@ Araçların ayrıntılı tasarımı için [docs/tools.md](docs/tools.md).
 ## Gereksinimler
 
 - Python 3.12 veya üstü
-- Node.js 20+ (yalnızca frontend için)
+- Node.js 20+ ve **yarn** (yalnızca frontend için)
 - Ollama (sohbetin çalışması için — aşağıya bakın)
 
 ## Kurulum ve çalıştırma
 
-PowerShell'de proje klasöründe:
+### Linux / macOS
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+### Windows (PowerShell)
 
 ```powershell
 py -3.12 -m venv .venv
@@ -84,18 +95,39 @@ Uygulama `http://127.0.0.1:8000` adresinde çalışır.
 
 ### Frontend
 
-```powershell
-npm install --prefix frontend
-npm run dev --prefix frontend
+Kabuk **Create React App + craco** ile derlenir (Vite değil). Geliştirme
+sunucusu `http://localhost:3000` adresinde açılır ve `/api` isteklerini
+backend'e proxy'ler. Bu repoda tek paket yöneticisi **yarn**'dır
+(`packageManager` alanı ve `yarn.lock` bunu sabitler).
+
+```bash
+yarn install --cwd frontend
+yarn start --cwd frontend
 ```
 
-Vite `http://localhost:5173` adresinde açılır ve `/api` isteklerini backend'e proxy'ler.
 Backend kapalıyken kabuk yüklenir ama sohbet bağlantı hatası verir.
+
+Dağıtımda backend derlenmiş kabuğu **kendisi sunar**, yani ayrı bir frontend
+sunucusu çalıştırmanız gerekmez:
+
+```bash
+yarn install --cwd frontend
+yarn build --cwd frontend          # çıktı: frontend/build
+uvicorn app.main:app               # backend kök adreste kabuğu sunar
+```
 
 ## Test
 
-```powershell
+```bash
 pytest
+```
+
+Kod kalitesi araçları (pre-commit ile de bağlıdır):
+
+```bash
+ruff check .          # lint
+ruff format --check . # biçim denetimi
+mypy app              # tip denetimi
 ```
 
 ## Text Brain (Ollama)
@@ -375,8 +407,11 @@ Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasınd
 
 ## Docker
 
-`Dockerfile` uygulamayı `0.0.0.0:8000`'de çalıştıracak şekilde hazırdır.
-`docker-compose.yml` henüz boştur. Backend frontend'i sunmaz; geliştirmede Vite ayrı çalışır.
+`Dockerfile` uygulamayı `0.0.0.0:8000`'de çalıştıracak şekilde hazırdır ve
+`docker-compose.yml` backend'i (isteğe bağlı olarak Ollama ile birlikte)
+ayağa kaldırır. Backend, derlenmiş kabuğu varsa kök adresten **kendisi
+sunar**; ayrı bir frontend container'ı gerekmez. Ayrıntılar için
+[docs/architecture.md](docs/architecture.md).
 
 ## Lisans
 
@@ -401,7 +436,7 @@ jarvis/
 │   ├── core/         # Ortak altyapı (structured logging)
 │   ├── prompts/      # Sistem prompt metinleri
 │   └── tools/        # Araçlar: dosya, terminal, git, proje özeti, bağlam
-├── frontend/         # React + Vite kabuk (WebGL orb)
+├── frontend/         # React + Create React App / craco kabuk (WebGL orb)
 ├── design/           # Claude Design tuval çıktısı (görsel referans)
 ├── tests/
 ├── scripts/

@@ -1,8 +1,8 @@
 """Derlenmiş kabuğun backend tarafından sunulması.
 
 Kullanım senaryosu bunu gerektirdi: bilgisayar açık kalıyor ve Jarvis
-tabletten kullanılıyor. Tablet iki ayrı sunucuya (Vite ve uvicorn)
-bağlanamaz — tek bir adres olmalı.
+tabletten kullanılıyor. Tablet iki ayrı sunucuya (CRA dev sunucusu ve
+uvicorn) bağlanamaz — tek bir adres olmalı.
 
 Aynı origin'den sunmanın ikinci bir kazancı var: CORS diye bir sorun hiç
 oluşmaz. Ayrı origin olsaydı, tarayıcının ön kontrol (preflight) isteklerine
@@ -11,7 +11,7 @@ gerekirdi ve o yapılandırma, yanlış yazıldığında sessizce her siteye izi
 veren türden bir şeydir.
 
 Derlenmiş çıktı yoksa uygulama ÇALIŞMAYA DEVAM EDER; yalnızca API sunar ve
-kök adres bunu açıkça söyler. Sebebi şu: `npm run build` çalıştırmamış bir
+kök adres bunu açıkça söyler. Sebebi şu: `yarn build` çalıştırmamış bir
 geliştiricinin backend'i hiç başlatamaması, kabuğu hiç kullanmayan testleri
 ve API istemcilerini de cezalandırırdı.
 """
@@ -29,7 +29,13 @@ from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FRONTEND_DIR = "frontend/dist"
+DEFAULT_FRONTEND_DIR = "frontend/build"
+"""`yarn build` çıktısının varsayılan konumu.
+
+Kabuk Create React App + craco ile derlenir; çıktı klasörü `dist` değil
+`build`'dir. Ayarlar bu değeri (`JARVIS_FRONTEND_DIR`) geçersiz kılabilir;
+buradaki sabit yalnızca doğrudan `mount_frontend` çağıranlar içindir.
+"""
 
 
 class SPAStaticFiles(StaticFiles):
@@ -57,7 +63,7 @@ def mount_frontend(app: FastAPI, directory: str = DEFAULT_FRONTEND_DIR) -> bool:
     """Derlenmiş kabuğu `/` altına monte eder.
 
     Args:
-        directory: `npm run build` çıktısının bulunduğu klasör.
+        directory: `yarn build` çıktısının bulunduğu klasör.
 
     Returns:
         Gerçekten monte edildiyse True. Klasör yoksa False döner ve uygulama
@@ -86,8 +92,8 @@ def build_root_response(app_name: str, version: str, environment: str) -> dict[s
         "version": version,
         "environment": environment,
         "frontend": (
-            "Derlenmiş kabuk bulunamadı. `npm run build --prefix frontend` "
-            "çalıştırın ya da geliştirmede Vite'ı ayrıca başlatın."
+            "Derlenmiş kabuk bulunamadı. `yarn build --cwd frontend` "
+            "çalıştırın ya da geliştirmede CRA dev sunucusunu ayrıca başlatın."
         ),
     }
 
