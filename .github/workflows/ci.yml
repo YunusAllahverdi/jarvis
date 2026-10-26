@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Aynı dalda art arda gelen çalıştırmalarda yalnızca en yenisi kalsın.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (lint, tip, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Bağımlılıkları kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: ruff (lint)
+        run: ruff check .
+
+      - name: ruff (biçim denetimi)
+        run: ruff format --check .
+
+      - name: mypy (tip denetimi)
+        run: mypy app
+
+      - name: pytest (kapsam raporuyla)
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Kapsam raporunu yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (install, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      # yarn.lock'a göre deterministik kurulum. --frozen-lockfile, kilit
+      # dosyası package.json ile uyuşmuyorsa sessizce güncellemek yerine
+      # hata verir; CI'da istenen davranış budur.
+      - name: yarn install
+        run: yarn install --frozen-lockfile
+
+      - name: yarn build
+        run: yarn build
+
+      - name: Derlenmiş kabuğu yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
+          if-no-files-found: ignore
