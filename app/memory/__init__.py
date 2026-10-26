@@ -26,7 +26,7 @@ from app.memory.episodic import EpisodicMemoryStore
 from app.memory.semantic import SemanticMemoryStore
 from app.memory.working import WorkingMemoryStore
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - gruplanmış sıra kasıtlı (modeller, sonra sözleşmeler)
     # Veri modelleri
     "Entity",
     "Event",

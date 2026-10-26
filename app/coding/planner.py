@@ -139,11 +139,13 @@ class CodingPlanner:
         komut, komut politikasında zaten reddedilirdi — ama o noktada bir
         tur harcanmış olurdu.
         """
-        raw = await self._ask(build_task_messages(
-            request,
-            repository_overview=repository_overview,
-            verification_candidates=verification_candidates,
-        ))
+        raw = await self._ask(
+            build_task_messages(
+                request,
+                repository_overview=repository_overview,
+                verification_candidates=verification_candidates,
+            )
+        )
         candidate = self._parse(raw, _TaskCandidate)
         if candidate is None:
             return TaskSpec(
@@ -214,9 +216,7 @@ class CodingPlanner:
         ve döngü bunu "daha fazla denemeye değmez" olarak okur.
         """
         raw = await self._ask(
-            build_repair_messages(
-                task, diagnosis, tools=tools, applied_summary=applied_summary
-            )
+            build_repair_messages(task, diagnosis, tools=tools, applied_summary=applied_summary)
         )
         return self._plan_from(raw, tools=tools, stage="repair")
 
@@ -236,7 +236,7 @@ class CodingPlanner:
         except LLMProviderError as exc:
             logger.warning("coding_provider_failed", extra={"error": str(exc)})
             return None
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("coding_provider_unexpected_error")
             return None
 
@@ -254,9 +254,7 @@ class CodingPlanner:
             logger.warning("coding_output_rejected", extra={"reason": REJECT_INVALID_SCHEMA})
             return None
 
-    def _plan_from(
-        self, raw: str | None, *, tools: list[ToolDescriptor], stage: str
-    ) -> CodingPlan:
+    def _plan_from(self, raw: str | None, *, tools: list[ToolDescriptor], stage: str) -> CodingPlan:
         """Ham metni doğrulanmış bir plana çevirir; reddedilirse boş plan.
 
         Boş plan, "hiçbir şey yapma" anlamına gelir ve döngü bunu güvenle

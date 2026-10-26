@@ -56,31 +56,56 @@ class DecisionPolicy(Protocol):
 # Kalıplar
 # ---------------------------------------------------------------------------
 
-_ARITHMETIC_RE = re.compile(
-    r"\d+(?:[.,]\d+)?(?:\s*[+\-*/%^]\s*\(?\s*\d+(?:[.,]\d+)?\s*\)?)+"
-)
+_ARITHMETIC_RE = re.compile(r"\d+(?:[.,]\d+)?(?:\s*[+\-*/%^]\s*\(?\s*\d+(?:[.,]\d+)?\s*\)?)+")
 """En az bir ikili işlem içeren sayısal ifade (tek başına "25" eşleşmez)."""
 
 _CALC_CUES = (
-    "kaç eder", "kaçtır", "hesapla", "hesaplar mısın",
-    "what is", "what's", "calculate", "compute", "how much is",
+    "kaç eder",
+    "kaçtır",
+    "hesapla",
+    "hesaplar mısın",
+    "what is",
+    "what's",
+    "calculate",
+    "compute",
+    "how much is",
 )
 
 _TIME_CUES = ("saat kaç", "saati söyle", "what time", "current time", "saat kaçta")
 _DATE_CUES = (
-    "bugün ayın kaçı", "bugünün tarihi", "hangi gündeyiz", "tarih ne",
-    "what date", "what day", "today's date", "current date",
+    "bugün ayın kaçı",
+    "bugünün tarihi",
+    "hangi gündeyiz",
+    "tarih ne",
+    "what date",
+    "what day",
+    "today's date",
+    "current date",
 )
 _SYSTEM_CUES = (
-    "sistem durumu", "sistem raporu", "system status", "diagnostics",
-    "cpu kullanımı", "ram kullanımı", "disk kullanımı",
+    "sistem durumu",
+    "sistem raporu",
+    "system status",
+    "diagnostics",
+    "cpu kullanımı",
+    "ram kullanımı",
+    "disk kullanımı",
 )
 _RECALL_CUES = (
-    "ne biliyorsun", "neler biliyorsun", "hakkımda ne", "beni tanıyor musun",
-    "hatırlıyor musun", "ne hatırlıyorsun", "neler hatırlıyorsun",
-    "neye odaklan", "nelere odaklan", "son zamanlarda ne",
-    "what do you know about me", "what do you remember",
-    "what have i been", "what am i focusing",
+    "ne biliyorsun",
+    "neler biliyorsun",
+    "hakkımda ne",
+    "beni tanıyor musun",
+    "hatırlıyor musun",
+    "ne hatırlıyorsun",
+    "neler hatırlıyorsun",
+    "neye odaklan",
+    "nelere odaklan",
+    "son zamanlarda ne",
+    "what do you know about me",
+    "what do you remember",
+    "what have i been",
+    "what am i focusing",
 )
 
 _EXPRESSION_COVERAGE_THRESHOLD = 0.6
@@ -251,9 +276,7 @@ class RuleBasedDecisionPolicy:
             reason="Mesajda tarih sorgusu tespit edildi.",
         )
 
-    def _decide_system_status(
-        self, context: AgentContext, message: str
-    ) -> AgentDecision | None:
+    def _decide_system_status(self, context: AgentContext, message: str) -> AgentDecision | None:
         if not _contains_any(message, _SYSTEM_CUES) or not context.has_tool(TOOL_SYSTEM_STATUS):
             return None
         return self._single(

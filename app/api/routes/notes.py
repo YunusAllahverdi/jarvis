@@ -55,9 +55,7 @@ async def list_notes(
 async def create_note(body: NoteCreate, request: Request) -> Note:
     """Yeni bir not oluşturur."""
     try:
-        return _store(request).add(
-            content=body.content, title=body.title, created_by="user"
-        )
+        return _store(request).add(content=body.content, title=body.title, created_by="user")
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

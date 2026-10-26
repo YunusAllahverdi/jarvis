@@ -28,6 +28,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<8.0",
+  "ruff>=0.9,<1.0",
+  "mypy>=1.13,<2.0",
+  "pre-commit>=4.0,<5.0",
 ]
 
 [project.scripts]
@@ -37,6 +41,85 @@ jarvis = "app.main:run"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# `.venv` gibi klasörler zaten varsayılan olarak dışlanır; burada projeye
+# özgü ek bir dışlama yok.
+extend-exclude = ["frontend", "design"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle hataları
+  "F",    # pyflakes
+  "W",    # pycodestyle uyarıları
+  "I",    # import sıralaması (isort)
+  "B",    # bugbear: yaygın mantık hataları
+  "C4",   # comprehensions
+  "UP",   # pyupgrade
+  "SIM",  # basitleştirmeler
+  "RUF",  # ruff'a özgü kurallar
+  "PIE",  # gereksiz kod
+  "PERF", # performans
+]
+ignore = [
+  # Türkçe dokümantasyon ve kullanıcıya dönük metinler Kiril/Yunan benzeri
+  # karakterler içerir; bu kural onları yanlışlıkla "karışık" sayar.
+  "RUF001",
+  "RUF002",
+  "RUF003",
+  # Uzun satırlar biçimlendirici tarafından zaten sarılır; kalan uzunluklar
+  # bölünemeyen URL'ler, uzun dize sabitleri ve Türkçe düzyazıdır.
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI, bağımlılık enjeksiyonunu fonksiyon varsayılanlarındaki
+# `Query(...)`/`Depends(...)` çağrılarıyla ifade eder; B008 burada
+# kasıtlı bir kalıba işaret eder, hataya değil.
+"app/api/**" = ["B008"]
+# Testlerde kasıtlı olarak özel üyelere ve `dict()` kurucularına erişilir;
+# ayrıca kısa yardımcı fonksiyonlarda dönüş tipleri zorunlu değildir.
+"tests/**" = ["C408", "SLF001", "ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+# Kademeli sıkılık. Hedef: her fonksiyonun imzası tiplidir ve çağrılar
+# denetlenir; ama üçüncü taraf (pydantic/fastapi/starlette) iç tiplerinin
+# çözümlenemediği yerlerde gürültü üretilmez.
+#
+# `strict = true` bilinçli olarak AÇILMADI: FastAPI bağımlılık yardımcıları
+# `getattr` üzerinden `Any` döndürdüğü için `warn_return_any` tek başına
+# ~20 yanlış-pozitif üretirdi. Bu kalıntı, ilgili uçlara açık tip daraltma
+# eklendikçe kademeli olarak kapatılacaktır.
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+extra_checks = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

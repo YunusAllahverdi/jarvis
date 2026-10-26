@@ -25,6 +25,7 @@ Mimari kurallar:
 
 from __future__ import annotations
 
+import builtins
 import logging
 import sqlite3
 from pathlib import Path
@@ -124,11 +125,11 @@ class CouncilMemberStore:
     # Okuma
     # ------------------------------------------------------------------
 
-    def list(self) -> list[CouncilMemberConfig]:
+    def list(self) -> builtins.list[CouncilMemberConfig]:
         """Tanımlı üyeleri ekleniş sırasıyla döndürür (anahtar hariç)."""
         return [self._to_config(row) for row in self._rows()]
 
-    def enabled_members(self) -> list[CouncilMemberConfig]:
+    def enabled_members(self) -> builtins.list[CouncilMemberConfig]:
         """Yalnızca etkin üyeleri döndürür."""
         return [config for config in self.list() if config.enabled]
 
@@ -213,7 +214,10 @@ class CouncilMemberStore:
                     ),
                 )
 
-        config = self._to_config(self._row(member_id))
+        row = self._row(member_id)
+        if row is None:  # pragma: no cover - upsert hemen ardından satırı yazar
+            raise RuntimeError("council üyesi yazıldıktan sonra okunamadı")
+        config = self._to_config(row)
         logger.info(
             "council_member_saved",
             extra={
@@ -229,9 +233,7 @@ class CouncilMemberStore:
     def delete(self, member_id: str) -> bool:
         """Üyeyi siler. Kayıt yoksa False döner."""
         with self._lock, self._connect() as conn:
-            cursor = conn.execute(
-                "DELETE FROM council_members WHERE member_id = ?", (member_id,)
-            )
+            cursor = conn.execute("DELETE FROM council_members WHERE member_id = ?", (member_id,))
         removed = cursor.rowcount > 0
         if removed:
             logger.info("council_member_deleted", extra={"member_id": member_id})
@@ -243,7 +245,7 @@ class CouncilMemberStore:
 
     def build_members(
         self, *, max_members: int = MAX_MEMBERS
-    ) -> tuple[list[CouncilMember], CouncilMember | None, list[LLMProvider]]:
+    ) -> tuple[builtins.list[CouncilMember], CouncilMember | None, builtins.list[LLMProvider]]:
         """Etkin üyelerden Council üyelerini ve chairman'ı kurar.
 
         Her üye KENDİ sağlayıcı örneğini alır; farklı adreslere ve farklı
@@ -301,13 +303,9 @@ class CouncilMemberStore:
     # Satır yardımcıları
     # ------------------------------------------------------------------
 
-    def _rows(self) -> list[sqlite3.Row]:
+    def _rows(self) -> builtins.list[sqlite3.Row]:
         with self._lock, self._connect() as conn:
-            return list(
-                conn.execute(
-                    "SELECT * FROM council_members ORDER BY position, member_id"
-                )
-            )
+            return list(conn.execute("SELECT * FROM council_members ORDER BY position, member_id"))
 
     def _row(self, member_id: str) -> sqlite3.Row | None:
         with self._lock, self._connect() as conn:

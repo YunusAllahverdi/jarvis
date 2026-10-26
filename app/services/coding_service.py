@@ -42,7 +42,7 @@ class CodingService:
         """Kodlama isteğini yürütür; hiçbir zaman istisna fırlatmaz."""
         try:
             return await self._loop.run(request, session_id=session_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("coding_service_failed", extra={"session_id": session_id})
             result = CodingResult(
                 request=request,

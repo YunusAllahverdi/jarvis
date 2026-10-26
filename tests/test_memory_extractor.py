@@ -45,7 +45,7 @@ from typing import Any
 
 import pytest
 
-from app.adapters.llm.base import LLMProviderError, LLMUnavailableError
+from app.adapters.llm.base import LLMUnavailableError
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.memory.extractor import (
     EXTRACTION_SYSTEM_PROMPT,
@@ -55,7 +55,6 @@ from app.memory.extractor import (
     _parse_llm_response,
 )
 from app.memory.record import MemoryRecord, MemoryStatus, MemoryType, Temporality
-
 
 # ---------------------------------------------------------------------------
 # Yardımcılar
@@ -130,15 +129,17 @@ def _make_extractor(response: str, **kwargs: Any) -> MemoryExtractor:
 
 class TestSingleValidExtraction:
     def test_returns_one_record(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "The user lives in Istanbul.",
-                "temporality": "present",
-                "status": "active",
-                "importance": 0.7,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "The user lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": 0.7,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I live in Istanbul."))
 
@@ -148,15 +149,17 @@ class TestSingleValidExtraction:
         assert isinstance(rec, MemoryRecord)
 
     def test_record_fields_match_candidate(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "preference",
-                "content": "The user prefers dark mode.",
-                "temporality": "present",
-                "status": "active",
-                "importance": 0.6,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "preference",
+                    "content": "The user prefers dark mode.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": 0.6,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I prefer dark mode."))
         rec = result.records[0]
@@ -168,9 +171,16 @@ class TestSingleValidExtraction:
         assert rec.importance == pytest.approx(0.6)
 
     def test_llm_receives_system_and_user_messages(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User name is Bob.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User name is Bob.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         provider = _FakeProvider(response)
         extractor = MemoryExtractor(provider=provider)
         _run(extractor.extract("My name is Bob."))
@@ -182,9 +192,16 @@ class TestSingleValidExtraction:
         assert msgs[1].content == "My name is Bob."
 
     def test_extraction_result_counts_are_correct(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User speaks Turkish.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User speaks Turkish.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I speak Turkish."))
 
@@ -201,11 +218,28 @@ class TestSingleValidExtraction:
 
 class TestMultipleMemories:
     def test_returns_multiple_records(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Ankara.", "temporality": "present", "status": "active"},
-            {"memory_type": "preference", "content": "User prefers tea over coffee.", "temporality": "present", "status": "active"},
-            {"memory_type": "goal", "content": "User wants to learn Spanish.", "temporality": "future", "status": "planned"},
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Ankara.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "preference",
+                    "content": "User prefers tea over coffee.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "goal",
+                    "content": "User wants to learn Spanish.",
+                    "temporality": "future",
+                    "status": "planned",
+                },
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I live in Ankara, prefer tea, and want to learn Spanish."))
 
@@ -214,10 +248,22 @@ class TestMultipleMemories:
         assert result.rejected_count == 0
 
     def test_memory_types_preserved_across_records(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Fact content here.", "temporality": "present", "status": "active"},
-            {"memory_type": "event", "content": "Event content here.", "temporality": "past", "status": "completed"},
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Fact content here.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "event",
+                    "content": "Event content here.",
+                    "temporality": "past",
+                    "status": "completed",
+                },
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Some message."))
         types = {r.memory_type for r in result.records}
@@ -278,34 +324,62 @@ class TestMissingMemoriesField:
 
 class TestInvalidMemoryType:
     def test_unknown_type_string_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "unknown_type", "content": "Some content.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "unknown_type",
+                    "content": "Some content.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
         assert result.rejected_count == 1
 
     def test_world_state_type_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "world_state", "content": "The light is on.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "world_state",
+                    "content": "The light is on.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_other_type_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "other", "content": "Some misc content.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "other",
+                    "content": "Some misc content.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_numeric_memory_type_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": 42, "content": "Some content.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": 42,
+                    "content": "Some content.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
@@ -318,18 +392,25 @@ class TestInvalidMemoryType:
 
 class TestInvalidTemporality:
     def test_unknown_temporality_string_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "yesterday", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "yesterday",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_null_temporality_uses_default(self) -> None:
         """temporality alanı yoksa varsayılan UNKNOWN kullanılmalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "status": "active"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "content": "Valid content.", "status": "active"}]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
@@ -343,18 +424,25 @@ class TestInvalidTemporality:
 
 class TestInvalidStatus:
     def test_unknown_status_string_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "unknown_status"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "unknown_status",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_null_status_uses_default(self) -> None:
         """status alanı yoksa varsayılan ACTIVE kullanılmalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "content": "Valid content.", "temporality": "present"}]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
@@ -368,9 +456,9 @@ class TestInvalidStatus:
 
 class TestMissingContent:
     def test_missing_content_field_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "temporality": "present", "status": "active"}]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
@@ -384,26 +472,33 @@ class TestMissingContent:
 
 class TestEmptyContent:
     def test_empty_string_content_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "content": "", "temporality": "present", "status": "active"}]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_whitespace_only_content_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "   \t\n  ", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "   \t\n  ",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_very_short_content_is_rejected(self) -> None:
         """min_content_length=3 varsayılanıyla kısa içerik reddedilmeli."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "Hi", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "content": "Hi", "temporality": "present", "status": "active"}]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
@@ -416,43 +511,82 @@ class TestEmptyContent:
 
 class TestInvalidImportance:
     def test_importance_above_one_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active", "importance": 1.5}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": 1.5,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_importance_below_zero_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active", "importance": -0.1}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": -0.1,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_importance_zero_is_accepted(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active", "importance": 0.0}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": 0.0,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
         assert result.records[0].importance == pytest.approx(0.0)
 
     def test_importance_one_is_accepted(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active", "importance": 1.0}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "active",
+                    "importance": 1.0,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
         assert result.records[0].importance == pytest.approx(1.0)
 
     def test_missing_importance_defaults_to_half(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid content.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records[0].importance == pytest.approx(0.5)
@@ -464,20 +598,30 @@ class TestInvalidImportance:
 
 
 class TestSecretContentRejection:
-    @pytest.mark.parametrize("secret_content", [
-        "The user's password is hunter2",
-        "API key is sk-abc123",
-        "api_key = mysecretkey12345",
-        "auth_token: Bearer eyJhbGciOiJIUzI1NiJ9",
-        "Private key: -----BEGIN RSA PRIVATE KEY-----",
-        "access_token: xoxb-abc-def",
-        "My secret is 12345",
-        "The secret_key for the service is abc123",
-    ])
+    @pytest.mark.parametrize(
+        "secret_content",
+        [
+            "The user's password is hunter2",
+            "API key is sk-abc123",
+            "api_key = mysecretkey12345",
+            "auth_token: Bearer eyJhbGciOiJIUzI1NiJ9",
+            "Private key: -----BEGIN RSA PRIVATE KEY-----",
+            "access_token: xoxb-abc-def",
+            "My secret is 12345",
+            "The secret_key for the service is abc123",
+        ],
+    )
     def test_secret_content_is_rejected(self, secret_content: str) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": secret_content, "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": secret_content,
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Ignore this."))
         assert result.records == [], f"Should have rejected: {secret_content!r}"
@@ -485,18 +629,32 @@ class TestSecretContentRejection:
     def test_long_hex_string_is_rejected(self) -> None:
         """32+ karakterlik hex dizesi token olarak reddedilmeli."""
         hex_token = "a" * 32
-        response = _json_response([
-            {"memory_type": "fact", "content": f"Token is {hex_token}", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": f"Token is {hex_token}",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_normal_content_is_not_falsely_rejected(self) -> None:
         """Normal içerik gizlilik denetiminden geçmeli."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "The user enjoys reading science fiction books.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "The user enjoys reading science fiction books.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I enjoy reading sci-fi."))
         assert len(result.records) == 1
@@ -543,15 +701,17 @@ class TestSmallTalkProducesNoMemory:
 
 class TestFutureEventClassification:
     def test_future_event_has_correct_temporality_and_status(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "event",
-                "content": "User plans to travel to Japan next month.",
-                "temporality": "future",
-                "status": "planned",
-                "importance": 0.8,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "event",
+                    "content": "User plans to travel to Japan next month.",
+                    "temporality": "future",
+                    "status": "planned",
+                    "importance": 0.8,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I'm planning to travel to Japan next month."))
 
@@ -569,15 +729,17 @@ class TestFutureEventClassification:
 
 class TestPastEventClassification:
     def test_past_event_has_correct_temporality_and_status(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "event",
-                "content": "User graduated from university in 2022.",
-                "temporality": "past",
-                "status": "completed",
-                "importance": 0.9,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "event",
+                    "content": "User graduated from university in 2022.",
+                    "temporality": "past",
+                    "status": "completed",
+                    "importance": 0.9,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I graduated from university in 2022."))
 
@@ -594,15 +756,17 @@ class TestPastEventClassification:
 
 class TestUncertainStatement:
     def test_uncertain_statement_has_uncertain_status(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User might live in Berlin (uncertain).",
-                "temporality": "present",
-                "status": "uncertain",
-                "importance": 0.4,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User might live in Berlin (uncertain).",
+                    "temporality": "present",
+                    "status": "uncertain",
+                    "importance": 0.4,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I think I might move to Berlin, not sure yet."))
 
@@ -651,9 +815,16 @@ class TestNoDatabaseWrite:
     def test_extract_returns_records_without_writing(self, tmp_path) -> None:
         """Extractor çalıştıktan sonra hiçbir veritabanı dosyası oluşmamalı."""
         db_path = tmp_path / "should_not_exist.db"
-        response = _json_response([
-            {"memory_type": "fact", "content": "User is a developer.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User is a developer.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I am a developer."))
 
@@ -682,11 +853,28 @@ class TestExtractionResultMetadata:
         assert result.accepted_count == 2
 
     def test_rejected_count_is_accurate(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Valid.", "temporality": "present", "status": "active"},
-            {"memory_type": "bad_type", "content": "Invalid type.", "temporality": "present", "status": "active"},
-            {"memory_type": "fact", "content": "", "temporality": "present", "status": "active"},
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "Valid.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "bad_type",
+                    "content": "Invalid type.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "fact",
+                    "content": "",
+                    "temporality": "present",
+                    "status": "active",
+                },
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.raw_candidates == 3
@@ -708,16 +896,18 @@ class TestExtractionResultMetadata:
 class TestExtraFieldsRejected:
     def test_extra_llm_fields_are_rejected(self) -> None:
         """LLM adayına eklenen rastgele alanlar reddedilmeli (extra=forbid)."""
-        response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User uses Python.",
-                "temporality": "present",
-                "status": "active",
-                "malicious_field": "injected_value",
-                "another_field": 42,
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User uses Python.",
+                    "temporality": "present",
+                    "status": "active",
+                    "malicious_field": "injected_value",
+                    "another_field": 42,
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I use Python."))
         assert result.records == []
@@ -731,17 +921,39 @@ class TestExtraFieldsRejected:
 
 class TestMarkdownCodeBlockStripping:
     def test_json_in_markdown_block_is_parsed(self) -> None:
-        wrapped = "```json\n" + _json_response([
-            {"memory_type": "fact", "content": "User is an engineer.", "temporality": "present", "status": "active"}
-        ]) + "\n```"
+        wrapped = (
+            "```json\n"
+            + _json_response(
+                [
+                    {
+                        "memory_type": "fact",
+                        "content": "User is an engineer.",
+                        "temporality": "present",
+                        "status": "active",
+                    }
+                ]
+            )
+            + "\n```"
+        )
         extractor = _make_extractor(wrapped)
         result = _run(extractor.extract("I am an engineer."))
         assert len(result.records) == 1
 
     def test_json_in_plain_code_block_is_parsed(self) -> None:
-        wrapped = "```\n" + _json_response([
-            {"memory_type": "fact", "content": "User loves hiking.", "temporality": "present", "status": "active"}
-        ]) + "\n```"
+        wrapped = (
+            "```\n"
+            + _json_response(
+                [
+                    {
+                        "memory_type": "fact",
+                        "content": "User loves hiking.",
+                        "temporality": "present",
+                        "status": "active",
+                    }
+                ]
+            )
+            + "\n```"
+        )
         extractor = _make_extractor(wrapped)
         result = _run(extractor.extract("I love hiking."))
         assert len(result.records) == 1
@@ -754,7 +966,21 @@ class TestMarkdownCodeBlockStripping:
 
 class TestNonDictMemoryItems:
     def test_string_items_in_memories_list_are_skipped(self) -> None:
-        response = json.dumps({"memories": ["not a dict", 42, None, {"memory_type": "fact", "content": "Valid content.", "temporality": "present", "status": "active"}]})
+        response = json.dumps(
+            {
+                "memories": [
+                    "not a dict",
+                    42,
+                    None,
+                    {
+                        "memory_type": "fact",
+                        "content": "Valid content.",
+                        "temporality": "present",
+                        "status": "active",
+                    },
+                ]
+            }
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
@@ -773,18 +999,25 @@ class TestNonDictMemoryItems:
 
 class TestContentLengthLimits:
     def test_content_below_min_length_is_rejected(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "Hi", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [{"memory_type": "fact", "content": "Hi", "temporality": "present", "status": "active"}]
+        )
         extractor = MemoryExtractor(provider=_FakeProvider(response), min_content_length=5)
         result = _run(extractor.extract("Test."))
         assert result.records == []
 
     def test_content_above_max_length_is_rejected(self) -> None:
         long_content = "x" * 200
-        response = _json_response([
-            {"memory_type": "fact", "content": long_content, "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": long_content,
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = MemoryExtractor(provider=_FakeProvider(response), max_content_length=100)
         result = _run(extractor.extract("Test."))
         assert result.records == []
@@ -797,9 +1030,16 @@ class TestContentLengthLimits:
         # Pad to exactly 100 chars with a trailing period if needed
         exact_content = exact_content.ljust(100, ".")
         assert len(exact_content) == 100
-        response = _json_response([
-            {"memory_type": "fact", "content": exact_content, "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": exact_content,
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = MemoryExtractor(provider=_FakeProvider(response), max_content_length=100)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
@@ -869,7 +1109,7 @@ class TestParseLLMResponse:
         assert len(result) == 1
 
     def test_markdown_block_stripped(self) -> None:
-        raw = "```json\n{\"memories\": []}\n```"
+        raw = '```json\n{"memories": []}\n```'
         result = _parse_llm_response(raw)
         assert result == []
 
@@ -880,19 +1120,22 @@ class TestParseLLMResponse:
 
 
 class TestContainsSecret:
-    @pytest.mark.parametrize("text,expected", [
-        ("My password is abc123", True),
-        ("api_key = sk-1234567890", True),
-        ("Bearer eyJhbGci", True),
-        ("secret_key: mysecret", True),
-        ("auth_token: xyz", True),
-        ("access_token abc", True),
-        ("private_key content", True),
-        ("User enjoys reading books.", False),
-        ("The temperature is 23 degrees.", False),
-        ("I work as a software engineer.", False),
-        ("My name is Alice.", False),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("My password is abc123", True),
+            ("api_key = sk-1234567890", True),
+            ("Bearer eyJhbGci", True),
+            ("secret_key: mysecret", True),
+            ("auth_token: xyz", True),
+            ("access_token abc", True),
+            ("private_key content", True),
+            ("User enjoys reading books.", False),
+            ("The temperature is 23 degrees.", False),
+            ("I work as a software engineer.", False),
+            ("My name is Alice.", False),
+        ],
+    )
     def test_secret_detection(self, text: str, expected: bool) -> None:
         assert _contains_secret(text) is expected
 
@@ -905,9 +1148,16 @@ class TestContainsSecret:
 class TestAllowedMemoryTypes:
     @pytest.mark.parametrize("memory_type", ["fact", "event", "preference", "goal"])
     def test_allowed_type_is_accepted(self, memory_type: str) -> None:
-        response = _json_response([
-            {"memory_type": memory_type, "content": "Valid memory content here.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": memory_type,
+                    "content": "Valid memory content here.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert len(result.records) == 1
@@ -922,9 +1172,16 @@ class TestAllowedMemoryTypes:
 class TestDisallowedMemoryTypes:
     @pytest.mark.parametrize("memory_type", ["world_state", "other"])
     def test_disallowed_type_is_rejected(self, memory_type: str) -> None:
-        response = _json_response([
-            {"memory_type": memory_type, "content": "Some content here.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": memory_type,
+                    "content": "Some content here.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("Test."))
         assert result.records == []
@@ -937,18 +1194,32 @@ class TestDisallowedMemoryTypes:
 
 class TestSessionIdPropagation:
     def test_session_id_is_set_on_record(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User works remotely.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User works remotely.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I work remotely.", session_id="sess-42"))
         assert len(result.records) == 1
         assert result.records[0].source_session_id == "sess-42"
 
     def test_no_session_id_leaves_field_none(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User works remotely.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User works remotely.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         extractor = _make_extractor(response)
         result = _run(extractor.extract("I work remotely."))
         assert result.records[0].source_session_id is None
@@ -974,4 +1245,7 @@ class TestCustomSystemPrompt:
         """Varsayılan prompt temel kuralları içermeli."""
         assert "memories" in EXTRACTION_SYSTEM_PROMPT
         assert "JSON" in EXTRACTION_SYSTEM_PROMPT
-        assert "password" in EXTRACTION_SYSTEM_PROMPT.lower() or "secret" in EXTRACTION_SYSTEM_PROMPT.lower()
+        assert (
+            "password" in EXTRACTION_SYSTEM_PROMPT.lower()
+            or "secret" in EXTRACTION_SYSTEM_PROMPT.lower()
+        )

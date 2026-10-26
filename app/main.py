@@ -1,9 +1,9 @@
 """Jarvis FastAPI uygulamasının başlangıç noktası."""
 
 import logging
-from pathlib import Path
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import TypedDict
 
 import uvicorn
 from fastapi import FastAPI
@@ -15,9 +15,9 @@ from app.agent.context import ContextBuilder
 from app.agent.llm_policy import LLMDecisionPolicy
 from app.agent.policy import DecisionPolicy, RuleBasedDecisionPolicy
 from app.agent.runner import AgentRunner
+from app.api.routes.admin import router as admin_router
 from app.api.routes.agent import router as agent_router
 from app.api.routes.approvals import router as approvals_router
-from app.api.routes.admin import router as admin_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coding import router as coding_router
@@ -28,11 +28,8 @@ from app.api.routes.notes import router as notes_router
 from app.api.routes.research import router as research_router
 from app.api.routes.speech import router as speech_router
 from app.api.routes.ui import router as ui_router
-from app.api.static import mount_frontend
-from app.notes.store import NoteStore
-from app.security.network import NetworkGuard
-from app.ui.actions import UIActionBus
 from app.api.routes.user_model import router as user_model_router
+from app.api.static import mount_frontend
 from app.coding.loop import CodingLoop
 from app.coding.planner import CodingPlanner
 from app.coding.review import CodeReviewer
@@ -48,28 +45,30 @@ from app.memory.extractor import MemoryExtractor
 from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
+from app.notes.store import NoteStore
+from app.security.approvals import ApprovalService
+from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
+from app.security.auth import ApiTokenMiddleware
+from app.security.checkpoints import ChangeJournal, SQLiteCheckpointStore
+from app.security.commands import CommandNotAllowedError, CommandPolicy
+from app.security.network import NetworkGuard
+from app.security.paths import PathGuard
+from app.security.permissions import ToolPermissionPolicy
 from app.services.agent_service import AgentService
 from app.services.coding_service import CodingService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
 from app.services.council_config import CouncilMemberStore
-from app.services.sqlite_conversation import SQLiteConversationStore
-from app.security.auth import ApiTokenMiddleware
-from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.council_service import CouncilService
 from app.services.learning_service import LearningService
+from app.services.llm_config import LLMConfigStore, SwitchableProvider
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 from app.services.memory_temporal import MemoryTemporalService
 from app.services.orchestrator import ChatOrchestrator
 from app.services.prompts import SystemPromptLoader
-from app.services.user_model_service import UserModelService
-from app.security.approvals import ApprovalService
-from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
-from app.security.checkpoints import SQLiteCheckpointStore
-from app.security.commands import CommandNotAllowedError, CommandPolicy
-from app.security.paths import PathGuard
 from app.services.speech import SpeechService
-from app.security.permissions import ToolPermissionPolicy
+from app.services.sqlite_conversation import SQLiteConversationStore
+from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
 from app.tools.defaults import (
     build_default_tool_registry,
@@ -83,6 +82,7 @@ from app.tools.defaults import (
 )
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
+from app.ui.actions import UIActionBus
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,8 @@ def _build_agent_policy(settings: Settings) -> ToolPermissionPolicy:
         allowed={PermissionLevel.READ},
         requires_approval=approval_levels,
     )
+
+
 """Uygulamanın araç izin duruşu — tek beyan noktası.
 
 READ serbesttir, WRITE kullanıcı onayına tabidir, DANGEROUS reddedilir. Bu fazda o
@@ -337,9 +339,7 @@ def _build_decision_policy(
     rule_based = RuleBasedDecisionPolicy()
     if policy_name != "llm":
         return rule_based
-    return LLMDecisionPolicy(
-        provider=provider, fallback=rule_based, model_label=model_label
-    )
+    return LLMDecisionPolicy(provider=provider, fallback=rule_based, model_label=model_label)
 
 
 def _build_council_service(
@@ -428,9 +428,7 @@ def _build_council_from_store(
     Depo boşsa bu bir hata DEĞİLDİR: kullanıcı üye tanımlamamıştır ve
     yapılandırma yolundan gelen Council (varsa) geçerli kalır.
     """
-    members, chairman, providers = store.build_members(
-        max_members=settings.council_max_members
-    )
+    members, chairman, providers = store.build_members(max_members=settings.council_max_members)
     if chairman is None or len(members) < settings.council_min_candidates:
         if members:
             logger.warning(
@@ -474,7 +472,7 @@ def _build_agent_stack(
     audit_log: AuditLog | None = None,
     workspace_guard: PathGuard | None = None,
     workspace_writable: bool = False,
-    change_journal: object | None = None,
+    change_journal: ChangeJournal | None = None,
     approval_service: ApprovalService | None = None,
     policy_boundary: ToolPermissionPolicy,
     note_store: NoteStore | None = None,
@@ -514,9 +512,7 @@ def _build_agent_stack(
     )
     # Notlar ve araştırma da yalnızca agent registry'sine eklenir; sohbetin
     # LLM'e sunduğu tool yüzeyi değişmez.
-    registered += register_note_tools(
-        agent_registry, store=note_store, writable=notes_writable
-    )
+    registered += register_note_tools(agent_registry, store=note_store, writable=notes_writable)
     registered += register_research_tool(
         agent_registry, guard=network_guard, timeout_seconds=research_timeout_seconds
     )
@@ -551,11 +547,21 @@ def _build_agent_stack(
         council_gate=council_gate,
         approval_service=approval_service,
         runner=AgentRunner(
-            tool_executor=ToolExecutor(
-                agent_registry, policy=policy_boundary, audit_log=audit_log
-            )
+            tool_executor=ToolExecutor(agent_registry, policy=policy_boundary, audit_log=audit_log)
         ),
     )
+
+
+class _ActiveCouncil(TypedDict):
+    """Lifespan boyunca değişebilen Council durumunun tek kaynağı.
+
+    Üç alan birlikte güncellenir; ayrı yerel değişkenler tutulsaydı kapatma
+    adımı eski sağlayıcı listesini kapatıp yenisini sızdırabilirdi.
+    """
+
+    service: CouncilService | None
+    gate: CouncilGate | None
+    providers: list[LLMProvider]
 
 
 def create_app(
@@ -587,11 +593,17 @@ def create_app(
     # Varsayılan sağlayıcı değiştirilebilir bir sarmalayıcıya alınır: sohbet,
     # bellek çıkarımı ve ajan hep AYNI nesneyi tutar, dolayısıyla yönetim
     # panelinden yapılan değişiklik hepsinde birden geçerli olur.
-    active_provider = provider if provider is not None else SwitchableProvider(OllamaProvider(
-        base_url=active_settings.ollama_base_url,
-        model=active_settings.ollama_model,
-        timeout_seconds=active_settings.ollama_timeout_seconds,
-    ))
+    active_provider: LLMProvider | SwitchableProvider = (
+        provider
+        if provider is not None
+        else SwitchableProvider(
+            OllamaProvider(
+                base_url=active_settings.ollama_base_url,
+                model=active_settings.ollama_model,
+                timeout_seconds=active_settings.ollama_timeout_seconds,
+            )
+        )
+    )
     active_conversation_store = (
         conversation_store if conversation_store is not None else InMemoryConversationStore()
     )
@@ -644,9 +656,7 @@ def create_app(
     # kullanıcının SQLite dosyasını oluşturmamalıdır (bellek yığını için de
     # geçerli olan aynı ilke).
     initial_experience_store = experience_store
-    auto_wire_experience_on_startup = (
-        initial_experience_store is None and using_default_provider
-    )
+    auto_wire_experience_on_startup = initial_experience_store is None and using_default_provider
 
     # Öğrenme/kullanıcı modeli katmanı da aynı ilkeyi izler ve Memory ile
     # Experience'tan BAĞIMSIZ bir bayrağa sahiptir. Kullanıcı modeli türetilmiş
@@ -654,9 +664,7 @@ def create_app(
     # yalnızca üretebildiği trait ailesi daralır.
     initial_memory_store = memory_store
     initial_user_trait_store = user_trait_store
-    auto_wire_user_model_on_startup = (
-        initial_user_trait_store is None and using_default_provider
-    )
+    auto_wire_user_model_on_startup = initial_user_trait_store is None and using_default_provider
 
     # Çağıran depoları açıkça verdiyse kullanıcı modeli hemen kurulur; aksi
     # halde (otomatik kurulum yolunda) lifespan startup'ta kurulacaktır.
@@ -698,7 +706,7 @@ def create_app(
     # tutmak için değiştirilebilir bir kayıt kullanılır. İki ayrı yerel
     # değişken bırakılsaydı, kapatma adımı eski sağlayıcı listesini kapatıp
     # yenisini sızdırabilirdi.
-    active_council: dict[str, object] = {
+    active_council: _ActiveCouncil = {
         "service": initial_council_service,
         "gate": council_gate,
         "providers": council_providers,
@@ -723,9 +731,7 @@ def create_app(
         experience_store=initial_experience_store,
         # Sohbet entegrasyonu ayarla kapatılabilir: agent API'si açık kalırken
         # sohbet akışının karar katmanını hiç çağırmaması istenebilir.
-        agent_service=(
-            initial_agent_service if active_settings.agent_chat_integration else None
-        ),
+        agent_service=(initial_agent_service if active_settings.agent_chat_integration else None),
         context_message_limit=active_settings.conversation_context_limit,
     )
 
@@ -802,20 +808,18 @@ def create_app(
             # Yapılandırma deposu diğer kalıcı depolarla aynı dosyayı
             # paylaşır ve yalnızca veritabanına zaten dokunulan kurulumlarda
             # açılır.
-            startup_llm_config = LLMConfigStore(
-                _resolve_audit_db_path(active_settings)
-            )
+            startup_llm_config = LLMConfigStore(_resolve_audit_db_path(active_settings))
             app_instance.state.llm_config_store = startup_llm_config
-            if startup_llm_config.get() != startup_llm_config._default:
+            if startup_llm_config.get() != startup_llm_config._default and isinstance(
+                active_provider, SwitchableProvider
+            ):
                 await active_provider.switch(startup_llm_config.build_provider())
 
             # Üye başına sağlayıcı deposu. Tanımlı üye varsa Council BURADAN
             # kurulur ve `council_models` ayarı yok sayılır: ikisi birden
             # geçerli olsaydı, panelden üye silen kullanıcı ayardan gelen
             # üyelerin sessizce devam ettiğini görürdü.
-            startup_council_store = CouncilMemberStore(
-                _resolve_audit_db_path(active_settings)
-            )
+            startup_council_store = CouncilMemberStore(_resolve_audit_db_path(active_settings))
             app_instance.state.council_member_store = startup_council_store
             stored_service, stored_providers = _build_council_from_store(
                 active_settings, startup_council_store
@@ -823,13 +827,13 @@ def create_app(
             if stored_service is not None:
                 # Ayardan gelen Council varsa sağlayıcıları sızdırılmadan
                 # bırakılır: bu noktada henüz hiçbir istek görmediler.
-                for superseded in active_council["providers"]:  # type: ignore[union-attr]
+                for superseded in active_council["providers"]:
                     closer = getattr(superseded, "aclose", None)
                     if closer is None:
                         continue
                     try:
                         await closer()
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         logger.exception("provider_close_failed")
                 active_council["service"] = stored_service
                 active_council["providers"] = stored_providers
@@ -883,8 +887,8 @@ def create_app(
                     provider=active_provider,
                     model_label=active_settings.ollama_model,
                 ),
-                council_service=active_council["service"],  # type: ignore[arg-type]
-                council_gate=active_council["gate"],  # type: ignore[arg-type]
+                council_service=active_council["service"],
+                council_gate=active_council["gate"],
                 audit_log=startup_audit_log,
                 workspace_guard=workspace_guard,
                 change_journal=app_instance.state.checkpoint_store,
@@ -924,7 +928,7 @@ def create_app(
                 provider=active_provider,
                 command_policy=command_policy,
                 approval_service=app_instance.state.approval_service,
-                council_service=active_council["service"],  # type: ignore[arg-type]
+                council_service=active_council["service"],
             )
 
         logger.info(
@@ -944,15 +948,14 @@ def create_app(
         # okunur: yönetim panelinden üye değiştirildiyse liste başlangıçtaki
         # liste değildir ve eskisini kapatmak yenisini sızdırmak olurdu.
         closing_council = (
-            getattr(app_instance.state, "council_providers", None)
-            or active_council["providers"]
+            getattr(app_instance.state, "council_providers", None) or active_council["providers"]
         )
-        for closable in (active_provider, *closing_council):  # type: ignore[misc]
+        for closable in (active_provider, *closing_council):
             if not hasattr(closable, "aclose"):
                 continue
             try:
                 await closable.aclose()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("provider_close_failed")
         logger.info("application_stopped", extra={"event": "application_stopped"})
 

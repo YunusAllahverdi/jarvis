@@ -143,7 +143,11 @@ class PathGuard:
         # Bağları çözerek normalleştir. Var olmayan bir hedef için de
         # çalışır (yazma durumu): mevcut olan en yakın üst dizin çözülür.
         try:
-            resolved = (self._root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+            resolved = (
+                (self._root / candidate).resolve()
+                if not candidate.is_absolute()
+                else candidate.resolve()
+            )
         except OSError as exc:  # döngüsel bağ gibi durumlar
             raise PathNotAllowedError("Yol çözümlenemedi.") from exc
 

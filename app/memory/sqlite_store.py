@@ -27,7 +27,6 @@ from app.memory.record import (
     Temporality,
     _utcnow,
 )
-from app.memory.store import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +126,7 @@ _ALL_DDL = [
 # Yardımcı dönüşümler
 # ---------------------------------------------------------------------------
 
+
 def _dt_to_str(dt: datetime | None) -> str | None:
     """datetime → ISO 8601 UTC string."""
     if dt is None:
@@ -167,6 +167,7 @@ def _row_to_record(row: sqlite3.Row) -> MemoryRecord:
 # ---------------------------------------------------------------------------
 # SQLiteMemoryStore
 # ---------------------------------------------------------------------------
+
 
 class SQLiteMemoryStore:
     """MemoryStore Protocol'ünü SQLite üzerinde uygular.
@@ -224,11 +225,11 @@ class SQLiteMemoryStore:
         """Yeni bir bellek kaydı ekler."""
         now = _utcnow()
         # Zaman damgaları ayarlanmamışsa şimdiyi kullan
-        if record.created_at is None:  # type: ignore[redundant-expr]
+        if record.created_at is None:
             record.created_at = now
-        if record.updated_at is None:  # type: ignore[redundant-expr]
+        if record.updated_at is None:
             record.updated_at = now
-        if record.valid_at is None:  # type: ignore[redundant-expr]
+        if record.valid_at is None:
             record.valid_at = now
 
         sql = """
@@ -354,9 +355,7 @@ class SQLiteMemoryStore:
         Silinmiş ve geçersizleştirilmiş kayıtlar da döndürülür.
         """
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM memories WHERE id = ?", (memory_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
         return _row_to_record(row) if row else None
 
     def list_active(
@@ -525,6 +524,7 @@ class SQLiteMemoryStore:
 # FTS sorgusunu güvenli hale getirme
 # ---------------------------------------------------------------------------
 
+
 def _sanitize_fts_query(query: str) -> str:
     """FTS5 sorgu sözdizimini bozabilecek karakterleri temizleyerek güvenli
     bir arama dizesi üretir.
@@ -558,24 +558,110 @@ def _sanitize_fts_query(query: str) -> str:
 _STOPWORDS: frozenset[str] = frozenset(
     {
         # İngilizce — soru kelimeleri, yardımcı fiiller, zamirler, edatlar
-        "a", "an", "the", "is", "are", "was", "were", "am", "be", "been", "being",
-        "what", "when", "where", "who", "whom", "which", "why", "how",
-        "do", "does", "did", "doing", "will", "would", "can", "could", "should",
-        "i", "you", "he", "she", "it", "we", "they",
-        "me", "him", "her", "us", "them",
-        "my", "your", "his", "its", "our", "their",
-        "mine", "yours", "ours", "theirs",
-        "of", "to", "in", "on", "at", "for", "with", "about", "again",
-        "remember", "recall", "know", "tell", "please",
-        "and", "or", "not", "so", "just", "again",
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "am",
+        "be",
+        "been",
+        "being",
+        "what",
+        "when",
+        "where",
+        "who",
+        "whom",
+        "which",
+        "why",
+        "how",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "will",
+        "would",
+        "can",
+        "could",
+        "should",
+        "i",
+        "you",
+        "he",
+        "she",
+        "it",
+        "we",
+        "they",
+        "me",
+        "him",
+        "her",
+        "us",
+        "them",
+        "my",
+        "your",
+        "his",
+        "its",
+        "our",
+        "their",
+        "mine",
+        "yours",
+        "ours",
+        "theirs",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "about",
+        "remember",
+        "recall",
+        "know",
+        "tell",
+        "please",
+        "and",
+        "or",
+        "not",
+        "so",
+        "just",
         # Türkçe — soru ekleri, yardımcı fiiller, zamirler, sık dolgu kelimeler
-        "ne", "neydi", "nedir", "neler",
-        "mi", "mı", "mu", "mü",
-        "musun", "misin", "musunuz", "misiniz", "mısın", "mısınız",
-        "benim", "senin", "onun", "bizim", "sizin", "onların",
-        "biliyor", "biliyorsun", "biliyor musun",
-        "hatırlıyor", "hatırlıyorsun", "hatırlar", "hatırlamıyorum",
-        "hakkında", "için", "var", "yok", "acaba", "lütfen", "ve", "veya",
+        "ne",
+        "neydi",
+        "nedir",
+        "neler",
+        "mi",
+        "mı",
+        "mu",
+        "mü",
+        "musun",
+        "misin",
+        "musunuz",
+        "misiniz",
+        "mısın",
+        "mısınız",
+        "benim",
+        "senin",
+        "onun",
+        "bizim",
+        "sizin",
+        "onların",
+        "biliyor",
+        "biliyorsun",
+        "biliyor musun",
+        "hatırlıyor",
+        "hatırlıyorsun",
+        "hatırlar",
+        "hatırlamıyorum",
+        "hakkında",
+        "için",
+        "var",
+        "yok",
+        "acaba",
+        "lütfen",
+        "ve",
+        "veya",
     }
 )
 

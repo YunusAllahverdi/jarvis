@@ -107,6 +107,7 @@ def _build(workspace: Path, *, with_approvals: bool = True):
 # 1-2. Ajan durur ve onay kimliği üretir
 # ---------------------------------------------------------------------------
 
+
 def test_write_is_stopped_and_the_file_is_untouched(workspace: Path) -> None:
     """Onay alınmadan dosya değişmemeli."""
     agent, _, _ = _build(workspace)
@@ -131,6 +132,7 @@ def test_result_carries_the_approval_id(workspace: Path) -> None:
 # ---------------------------------------------------------------------------
 # 3-5. Kullanıcı kararı
 # ---------------------------------------------------------------------------
+
 
 def test_pending_request_is_visible_with_its_arguments(workspace: Path) -> None:
     """Kullanıcı neyi onayladığını görebilmeli."""
@@ -172,6 +174,7 @@ def test_rejecting_leaves_the_file_alone(workspace: Path) -> None:
 # ---------------------------------------------------------------------------
 # 6. Onay altyapısı yoksa
 # ---------------------------------------------------------------------------
+
 
 def test_without_an_approval_service_the_write_still_does_not_happen(workspace: Path) -> None:
     """Onay servisi bağlı değilken de yazma gerçekleşmemeli.

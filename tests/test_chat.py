@@ -24,7 +24,9 @@ class FakeLLMProvider:
     ) -> LLMResponse:
         self.calls.append(list(messages))
         self.tool_definitions.append(list(tools))
-        latest_user_message = next(message for message in reversed(messages) if message.role == "user")
+        latest_user_message = next(
+            message for message in reversed(messages) if message.role == "user"
+        )
         return LLMResponse(content=f"Jarvis: {latest_user_message.content}")
 
 
@@ -134,7 +136,9 @@ class CalculatorToolCallingProvider:
         self.calls.append(list(messages))
         if len(self.calls) == 1:
             assert {tool.name for tool in tools} >= {"calculator", "get_time"}
-            return LLMResponse(tool_calls=[ToolCall(name="calculator", arguments={"expression": "2 + 3"})])
+            return LLMResponse(
+                tool_calls=[ToolCall(name="calculator", arguments={"expression": "2 + 3"})]
+            )
 
         tool_result = messages[-1]
         assert tool_result.role == "tool"

@@ -42,9 +42,7 @@ class TestGateClosedConditions:
         assert decision.trigger is None
 
     def test_insufficient_members_closes_the_gate(self) -> None:
-        decision = _gate(member_count=1, min_candidates=2).evaluate(
-            user_message="council kullan"
-        )
+        decision = _gate(member_count=1, min_candidates=2).evaluate(user_message="council kullan")
 
         assert decision.run is False
         assert "minimum aday" in decision.reason

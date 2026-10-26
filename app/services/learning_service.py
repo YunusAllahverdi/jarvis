@@ -382,7 +382,7 @@ class LearningService:
             )
             logger.info("learning_pass_complete", extra=result.model_dump())
             return result
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("learning_pass_failed")
             return LearningPassResult(failed=True)
 

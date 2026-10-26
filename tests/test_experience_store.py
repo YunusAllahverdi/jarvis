@@ -36,7 +36,6 @@ kalıcılık katmanı).
 from __future__ import annotations
 
 import inspect
-import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,7 +45,6 @@ import pytest
 from app.memory.experience import Experience, ExperienceOutcome
 from app.memory.experience_store import ExperienceStore
 from app.memory.sqlite_experience_store import SQLiteExperienceStore
-
 
 # ---------------------------------------------------------------------------
 # Fixture / yardımcılar
@@ -170,9 +168,7 @@ class TestNullableJsonFields:
         assert fetched is not None
         assert fetched.user_state == {"mood": "curious"}
 
-    def test_emotional_context_none_round_trips_as_none(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_emotional_context_none_round_trips_as_none(self, store: SQLiteExperienceStore) -> None:
         exp = store.add(_make_experience(emotional_context=None))
         fetched = store.get(exp.id)
         assert fetched is not None
@@ -207,9 +203,7 @@ class TestNullableJsonFields:
 
 
 class TestMetadataRoundTrip:
-    def test_default_metadata_round_trips_as_empty_dict(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_default_metadata_round_trips_as_empty_dict(self, store: SQLiteExperienceStore) -> None:
         exp = store.add(_make_experience())
         fetched = store.get(exp.id)
         assert fetched is not None
@@ -299,9 +293,7 @@ class TestPersistedAtSeparateFromOccurredAt:
 
 
 class TestListBySession:
-    def test_returns_only_records_for_given_session(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_returns_only_records_for_given_session(self, store: SQLiteExperienceStore) -> None:
         store.add(_make_experience(session_id="sess-A", user_message="a1"))
         store.add(_make_experience(session_id="sess-A", user_message="a2"))
         store.add(_make_experience(session_id="sess-B", user_message="b1"))
@@ -310,9 +302,7 @@ class TestListBySession:
         assert len(results) == 2
         assert all(r.session_id == "sess-A" for r in results)
 
-    def test_results_ordered_by_occurred_at_ascending(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_results_ordered_by_occurred_at_ascending(self, store: SQLiteExperienceStore) -> None:
         t1 = datetime(2024, 1, 1, tzinfo=UTC)
         t2 = datetime(2024, 1, 2, tzinfo=UTC)
         store.add(_make_experience(session_id="sess-A", occurred_at=t2, user_message="second"))
@@ -332,9 +322,7 @@ class TestListBySession:
 
 
 class TestListRecent:
-    def test_results_ordered_by_occurred_at_descending(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_results_ordered_by_occurred_at_descending(self, store: SQLiteExperienceStore) -> None:
         t1 = datetime(2024, 3, 1, tzinfo=UTC)
         t2 = datetime(2024, 6, 1, tzinfo=UTC)
         t3 = datetime(2024, 1, 1, tzinfo=UTC)
@@ -446,9 +434,7 @@ class TestCoexistenceWithSQLiteMemoryStore:
 
 
 class TestSchemaIdempotence:
-    def test_constructing_store_twice_on_same_file_does_not_raise(
-        self, tmp_path: Path
-    ) -> None:
+    def test_constructing_store_twice_on_same_file_does_not_raise(self, tmp_path: Path) -> None:
         db_path = str(tmp_path / "idempotent.db")
         first = SQLiteExperienceStore(db_path)
         first.add(_make_experience())
@@ -468,9 +454,7 @@ class TestNoFts5Table:
         self, store: SQLiteExperienceStore
     ) -> None:
         conn = sqlite3.connect(store._db_path)  # type: ignore[attr-defined]
-        rows = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         conn.close()
 
         table_names = {r[0] for r in rows}
@@ -495,19 +479,17 @@ class TestNoExternalDependency:
                 if line.strip().startswith(("import ", "from "))
             ]
             for line in import_lines:
-                assert (
-                    line.startswith("from app.memory.experience")
-                    or line.split()[1].split(".")[0]
-                    in {
-                        "__future__",
-                        "json",
-                        "logging",
-                        "sqlite3",
-                        "datetime",
-                        "pathlib",
-                        "typing",
-                    }
-                ), f"beklenmeyen import: {line}"
+                assert line.startswith("from app.memory.experience") or line.split()[1].split(".")[
+                    0
+                ] in {
+                    "__future__",
+                    "json",
+                    "logging",
+                    "sqlite3",
+                    "datetime",
+                    "pathlib",
+                    "typing",
+                }, f"beklenmeyen import: {line}"
 
     def test_store_module_does_not_import_sqlite_memory_store_or_protocol(self) -> None:
         import app.memory.sqlite_experience_store as store_module
@@ -529,9 +511,7 @@ class TestNoExternalDependency:
 
 
 class TestConversationTextPreservedExactly:
-    def test_unicode_and_turkish_characters_round_trip(
-        self, store: SQLiteExperienceStore
-    ) -> None:
+    def test_unicode_and_turkish_characters_round_trip(self, store: SQLiteExperienceStore) -> None:
         text = "Kullanıcı şöyle dedi: 'İstanbul'da yaşıyorum, çok güzel bir şehir!' 😊"
         exp = store.add(_make_experience(user_message=text, assistant_response=text))
         fetched = store.get(exp.id)
@@ -613,8 +593,7 @@ class TestSecureVaultNotImplementedOrCoupled:
             sig = inspect.signature(method)
             param_names = {p.lower() for p in sig.parameters}
             assert not any(
-                "password" in p or "auth" in p or "token" in p or "key" in p
-                for p in param_names
+                "password" in p or "auth" in p or "token" in p or "key" in p for p in param_names
             )
 
     def test_database_file_is_plain_unencrypted_sqlite(

@@ -3,13 +3,11 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.chat import ToolDefinition
-
-InputModelT = TypeVar("InputModelT", bound=BaseModel)
 
 
 class PermissionLevel(StrEnum):
@@ -38,13 +36,16 @@ class ToolExecutionError(ToolError):
     """Doğrulanmış input ile araç çalıştırılırken hata oluşmuştur."""
 
 
-class Tool(ABC, Generic[InputModelT]):
-    """Her kayıtlı tool'un uygulaması gereken sözleşme."""
+class Tool[InputModelT: BaseModel](ABC):
+    """Her kayıtlı tool'un uygulaması gereken sözleşme.
+
+    `InputModelT` PEP 695 tip parametresidir: aracın Pydantic input modeli.
+    """
 
     name: ClassVar[str]
     description: ClassVar[str]
     permission: ClassVar[PermissionLevel]
-    input_model: ClassVar[type[InputModelT]]
+    input_model: type[InputModelT]
 
     @property
     def definition(self) -> ToolDefinition:

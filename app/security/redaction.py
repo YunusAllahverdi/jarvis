@@ -66,7 +66,9 @@ def redact_text(text: str) -> str:
         redacted = pattern.sub(REDACTED, redacted)
 
     if len(redacted) > MAX_VALUE_LENGTH:
-        return redacted[:MAX_VALUE_LENGTH] + f"…[{len(redacted) - MAX_VALUE_LENGTH} karakter kırpıldı]"
+        return (
+            redacted[:MAX_VALUE_LENGTH] + f"…[{len(redacted) - MAX_VALUE_LENGTH} karakter kırpıldı]"
+        )
     return redacted
 
 

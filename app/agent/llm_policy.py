@@ -203,7 +203,7 @@ class LLMDecisionPolicy:
         except LLMProviderError as exc:
             logger.warning("agent_decision_provider_failed", extra={"error": str(exc)})
             return None
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_decision_provider_unexpected_error")
             return None
 
@@ -313,7 +313,7 @@ class LLMDecisionPolicy:
         if self._fallback is not None:
             try:
                 return await self._fallback.decide(context)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("agent_decision_fallback_failed")
 
         return AgentDecision(

@@ -195,9 +195,7 @@ class NoteStore:
                         note.session_id,
                     ),
                 )
-        logger.info(
-            "note_added", extra={"note_id": note.id, "created_by": created_by}
-        )
+        logger.info("note_added", extra={"note_id": note.id, "created_by": created_by})
         return note
 
     def update(self, note_id: str, *, content: str, title: str | None = None) -> Note | None:

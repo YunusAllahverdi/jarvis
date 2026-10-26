@@ -243,7 +243,7 @@ def safe_record(audit_log: AuditLog | None, event: AuditEvent) -> None:
         return
     try:
         audit_log.record(event)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception(
             "audit_record_failed",
             extra={"action": str(event.action), "tool_name": event.tool_name},

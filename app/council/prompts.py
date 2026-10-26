@@ -28,8 +28,12 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, escape_untrusted, fence
 from app.core.chat import ChatMessage
+from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, fence
+
+# Açık re-export: `test_security_fencing` tüm tüketicilerin aynı kaçış
+# tanımını paylaştığını bu isim üzerinden doğrular.
+from app.security.fencing import escape_untrusted as escape_untrusted
 
 _UNTRUSTED_OPEN = UNTRUSTED_OPEN
 _UNTRUSTED_CLOSE = UNTRUSTED_CLOSE
@@ -68,9 +72,7 @@ RULES:
 6. Do not mention that you are part of a council."""
 
 
-def build_candidate_messages(
-    task: str, context_block: str | None = None
-) -> list[ChatMessage]:
+def build_candidate_messages(task: str, context_block: str | None = None) -> list[ChatMessage]:
     """Stage 1 için mesajları kurar.
 
     TÜM üyeler bu fonksiyondan geçtiği için aynı görevi ve aynı bağlamı alır;
@@ -190,8 +192,7 @@ def build_chairman_messages(
         sections.append("PEER REVIEWS:")
         sections.append(
             "\n\n".join(
-                _fence("review", truncate(payload, max_review_chars))
-                for payload in review_payloads
+                _fence("review", truncate(payload, max_review_chars)) for payload in review_payloads
             )
         )
 
@@ -202,8 +203,9 @@ def build_chairman_messages(
     ]
 
 
-def render_review_payload(rankings: Sequence[str], scores: dict[str, float],
-                          criticisms: Sequence[tuple[str, str]]) -> str:
+def render_review_payload(
+    rankings: Sequence[str], scores: dict[str, float], criticisms: Sequence[tuple[str, str]]
+) -> str:
     """Bir incelemeyi Chairman'a verilecek kompakt metne çevirir."""
     return json.dumps(
         {

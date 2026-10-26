@@ -59,7 +59,6 @@ from app.coding.models import (
     Diagnosis,
     Iteration,
     TaskSpec,
-    Verification,
 )
 from app.coding.planner import CodingPlanner
 from app.coding.summary import build_summary
@@ -189,10 +188,8 @@ class CodingLoop:
             return None
         try:
             return await self._reviewer.review(result)  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "coding_review_failed", extra={"session_id": result.session_id}
-            )
+        except Exception:
+            logger.exception("coding_review_failed", extra={"session_id": result.session_id})
             return None
 
     async def _iterate(
@@ -285,9 +282,7 @@ class CodingLoop:
 
         for position, step in enumerate(iteration.plan.steps):
             try:
-                arguments = resolve_arguments(
-                    step.arguments, previous_results=previous_results
-                )
+                arguments = resolve_arguments(step.arguments, previous_results=previous_results)
             except ReferenceError as exc:
                 logger.warning(
                     "coding_step_reference_unresolved",
@@ -332,10 +327,8 @@ class CodingLoop:
         call.arguments = arguments
         try:
             result = await self._tool_executor.execute(call, session_id=session_id)
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "coding_step_unexpected_error", extra={"tool_name": step.tool_name}
-            )
+        except Exception:
+            logger.exception("coding_step_unexpected_error", extra={"tool_name": step.tool_name})
             return ActionOutcome(
                 tool_name=step.tool_name,
                 success=False,
@@ -382,7 +375,7 @@ class CodingLoop:
                 session_id=session_id,
                 reason=outcome.error_message,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "coding_approval_request_failed", extra={"tool_name": outcome.tool_name}
             )
@@ -404,7 +397,7 @@ class CodingLoop:
         """
         try:
             tools = self._tool_registry.list_tools()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("coding_tool_registry_failed")
             return []
 
@@ -436,7 +429,7 @@ class CodingLoop:
                 ToolCall(name=PROJECT_OVERVIEW_TOOL_NAME, arguments={"path": "."}),
                 session_id=session_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("coding_overview_failed")
             return None
         if not result.success or result.data is None:
@@ -457,7 +450,7 @@ class CodingLoop:
             result = await self._tool_executor.execute(
                 ToolCall(name=GIT_DIFF_TOOL_NAME, arguments={}), session_id=session_id
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("coding_diff_failed")
             return None
         if not result.success or result.data is None:

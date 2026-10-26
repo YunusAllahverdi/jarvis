@@ -24,7 +24,7 @@ from threading import RLock
 from typing import Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,9 @@ class ChangeJournal(Protocol):
     Yazma araçları bunu bilir; checkpoint'in nasıl saklandığını bilmez.
     """
 
-    def record(self, path: Path, *, session_id: str | None = None, reason: str | None = None) -> Checkpoint | None:
+    def record(
+        self, path: Path, *, session_id: str | None = None, reason: str | None = None
+    ) -> Checkpoint | None:
         """Dosyanın mevcut hâlini kaydeder ve checkpoint'i döndürür."""
         ...
 

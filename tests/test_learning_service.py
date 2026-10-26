@@ -69,11 +69,13 @@ def _derive(experiences: list[Experience]) -> dict[tuple[TraitType, str], object
 
 class TestRecurringNeedDerivation:
     def test_repeated_tool_use_becomes_a_recurring_need(self) -> None:
-        traits = _derive([
-            _exp(tool_calls=["get_time"]),
-            _exp(tool_calls=["get_time"]),
-            _exp(tool_calls=["get_time"]),
-        ])
+        traits = _derive(
+            [
+                _exp(tool_calls=["get_time"]),
+                _exp(tool_calls=["get_time"]),
+                _exp(tool_calls=["get_time"]),
+            ]
+        )
 
         trait = traits[(TraitType.RECURRING_NEED, "tool:get_time")]
         assert trait.value == "get_time"  # type: ignore[attr-defined]
@@ -88,10 +90,12 @@ class TestRecurringNeedDerivation:
         assert (TraitType.RECURRING_NEED, "tool:get_time") not in traits
 
     def test_each_tool_gets_its_own_trait(self) -> None:
-        traits = _derive([
-            _exp(tool_calls=["get_time", "calculator"]),
-            _exp(tool_calls=["get_time", "calculator"]),
-        ])
+        traits = _derive(
+            [
+                _exp(tool_calls=["get_time", "calculator"]),
+                _exp(tool_calls=["get_time", "calculator"]),
+            ]
+        )
 
         assert (TraitType.RECURRING_NEED, "tool:get_time") in traits
         assert (TraitType.RECURRING_NEED, "tool:calculator") in traits
@@ -104,30 +108,36 @@ class TestRecurringNeedDerivation:
 
 class TestInterestDerivation:
     def test_recurring_topic_becomes_an_interest(self) -> None:
-        traits = _derive([
-            _exp(user_message="python öğreniyorum"),
-            _exp(user_message="python performansı"),
-            _exp(user_message="python testleri"),
-        ])
+        traits = _derive(
+            [
+                _exp(user_message="python öğreniyorum"),
+                _exp(user_message="python performansı"),
+                _exp(user_message="python testleri"),
+            ]
+        )
 
         trait = traits[(TraitType.INTEREST, "topic:python")]
         assert trait.value == "python"  # type: ignore[attr-defined]
         assert trait.evidence_count == 3  # type: ignore[attr-defined]
 
     def test_topic_below_document_frequency_threshold_is_ignored(self) -> None:
-        traits = _derive([
-            _exp(user_message="python öğreniyorum"),
-            _exp(user_message="python performansı"),
-        ])
+        traits = _derive(
+            [
+                _exp(user_message="python öğreniyorum"),
+                _exp(user_message="python performansı"),
+            ]
+        )
 
         assert (TraitType.INTEREST, "topic:python") not in traits
 
     def test_stopword_heavy_conversation_produces_no_interests(self) -> None:
-        traits = _derive([
-            _exp(user_message="merhaba nasılsın"),
-            _exp(user_message="merhaba nasılsın"),
-            _exp(user_message="merhaba nasılsın"),
-        ])
+        traits = _derive(
+            [
+                _exp(user_message="merhaba nasılsın"),
+                _exp(user_message="merhaba nasılsın"),
+                _exp(user_message="merhaba nasılsın"),
+            ]
+        )
 
         assert not [key for key in traits if key[0] is TraitType.INTEREST]
 
@@ -151,31 +161,35 @@ class TestPatternDerivation:
 
     def test_scattered_activity_produces_no_dominant_period(self) -> None:
         """Hiçbir bölüm baskın değilse kalıp uydurulmamalı."""
-        traits = _derive([
-            _exp(hour=2),
-            _exp(hour=3),
-            _exp(hour=8),
-            _exp(hour=9),
-            _exp(hour=14),
-            _exp(hour=15),
-            _exp(hour=20),
-            _exp(hour=21),
-        ])
+        traits = _derive(
+            [
+                _exp(hour=2),
+                _exp(hour=3),
+                _exp(hour=8),
+                _exp(hour=9),
+                _exp(hour=14),
+                _exp(hour=15),
+                _exp(hour=20),
+                _exp(hour=21),
+            ]
+        )
 
         assert (TraitType.PATTERN, "active_period") not in traits
 
     def test_session_depth_is_derived_from_multiple_sessions(self) -> None:
-        traits = _derive([
-            _exp(session_id="a"),
-            _exp(session_id="a"),
-            _exp(session_id="a"),
-            _exp(session_id="b"),
-            _exp(session_id="b"),
-            _exp(session_id="b"),
-            _exp(session_id="c"),
-            _exp(session_id="c"),
-            _exp(session_id="c"),
-        ])
+        traits = _derive(
+            [
+                _exp(session_id="a"),
+                _exp(session_id="a"),
+                _exp(session_id="a"),
+                _exp(session_id="b"),
+                _exp(session_id="b"),
+                _exp(session_id="b"),
+                _exp(session_id="c"),
+                _exp(session_id="c"),
+                _exp(session_id="c"),
+            ]
+        )
 
         trait = traits[(TraitType.PATTERN, "session_depth")]
         assert trait.value == "medium"  # type: ignore[attr-defined]
@@ -307,7 +321,9 @@ class TestMemoryDerivation:
 # ---------------------------------------------------------------------------
 
 
-def _make_service(tmp_path: Path) -> tuple[LearningService, SQLiteUserTraitStore, SQLiteExperienceStore, SQLiteMemoryStore]:
+def _make_service(
+    tmp_path: Path,
+) -> tuple[LearningService, SQLiteUserTraitStore, SQLiteExperienceStore, SQLiteMemoryStore]:
     db_path = str(tmp_path / "memory.db")
     trait_store = SQLiteUserTraitStore(db_path)
     experience_store = SQLiteExperienceStore(db_path)
@@ -434,32 +450,32 @@ class TestLearningPass:
 class TestErrorIsolation:
     def test_store_failure_returns_failed_result_instead_of_raising(self) -> None:
         class _FailingTraitStore:
-            def upsert(self, trait):  # noqa: ANN001, ANN201
+            def upsert(self, trait):
                 raise RuntimeError("trait store unavailable")
 
-            def invalidate(self, trait_id, *, at=None) -> bool:  # noqa: ANN001
+            def invalidate(self, trait_id, *, at=None) -> bool:
                 return False
 
-            def get(self, trait_id):  # noqa: ANN001, ANN201
+            def get(self, trait_id):
                 return None
 
-            def find_active(self, trait_type, key):  # noqa: ANN001, ANN201
+            def find_active(self, trait_type, key):
                 return None
 
-            def list_active(self, **kwargs):  # noqa: ANN003, ANN201
+            def list_active(self, **kwargs):
                 return []
 
         class _ExperienceSource:
-            def add(self, experience):  # noqa: ANN001, ANN201
+            def add(self, experience):
                 return experience
 
-            def get(self, experience_id):  # noqa: ANN001, ANN201
+            def get(self, experience_id):
                 return None
 
-            def list_by_session(self, session_id, *, limit=50):  # noqa: ANN001
+            def list_by_session(self, session_id, *, limit=50):
                 return []
 
-            def list_recent(self, *, limit=50, before=None):  # noqa: ANN001
+            def list_recent(self, *, limit=50, before=None):
                 return [_exp(day=d, tool_calls=["get_time"]) for d in range(20, 26)]
 
         service = LearningService(
@@ -474,32 +490,32 @@ class TestErrorIsolation:
 
     def test_experience_source_failure_returns_failed_result(self) -> None:
         class _RaisingExperienceStore:
-            def add(self, experience):  # noqa: ANN001, ANN201
+            def add(self, experience):
                 return experience
 
-            def get(self, experience_id):  # noqa: ANN001, ANN201
+            def get(self, experience_id):
                 return None
 
-            def list_by_session(self, session_id, *, limit=50):  # noqa: ANN001
+            def list_by_session(self, session_id, *, limit=50):
                 return []
 
-            def list_recent(self, *, limit=50, before=None):  # noqa: ANN001
+            def list_recent(self, *, limit=50, before=None):
                 raise RuntimeError("experience store unavailable")
 
         class _NoopTraitStore:
-            def upsert(self, trait):  # noqa: ANN001, ANN201
+            def upsert(self, trait):
                 return trait
 
-            def invalidate(self, trait_id, *, at=None) -> bool:  # noqa: ANN001
+            def invalidate(self, trait_id, *, at=None) -> bool:
                 return False
 
-            def get(self, trait_id):  # noqa: ANN001, ANN201
+            def get(self, trait_id):
                 return None
 
-            def find_active(self, trait_type, key):  # noqa: ANN001, ANN201
+            def find_active(self, trait_type, key):
                 return None
 
-            def list_active(self, **kwargs):  # noqa: ANN003, ANN201
+            def list_active(self, **kwargs):
                 return []
 
         service = LearningService(

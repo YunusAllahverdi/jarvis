@@ -27,12 +27,12 @@ from app.agent.prompts import build_council_source_block
 from app.agent.references import is_reference
 from app.agent.runner import AgentRunner
 from app.core.chat import ToolCall
-from app.security.approvals import ApprovalService
-from app.tools.base import PermissionLevel
-from app.tools.executor import ToolExecutor
 from app.council.gate import CouncilGate
 from app.council.models import CouncilRequest, CouncilResult
+from app.security.approvals import ApprovalService
 from app.services.council_service import CouncilService
+from app.tools.base import PermissionLevel
+from app.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +101,7 @@ class AgentService:
 
         return self._council_service
 
-    def set_council(
-        self, service: CouncilService | None, gate: CouncilGate | None
-    ) -> None:
+    def set_council(self, service: CouncilService | None, gate: CouncilGate | None) -> None:
         """Council'ı kurucudan sonra bağlar veya değiştirir (geç bağlama).
 
         `ChatOrchestrator.set_*` metodlarıyla aynı kalıp ve aynı gerekçe:
@@ -126,9 +124,7 @@ class AgentService:
         """
         return self._context_builder.build(user_message, session_id=session_id)
 
-    async def decide(
-        self, user_message: str, *, session_id: str | None = None
-    ) -> AgentDecision:
+    async def decide(self, user_message: str, *, session_id: str | None = None) -> AgentDecision:
         """Karar üretir ama HİÇBİR eylemi yürütmez.
 
         Hiçbir zaman istisna fırlatmaz; hata durumunda `Intent.UNKNOWN` döner.
@@ -136,7 +132,7 @@ class AgentService:
         try:
             context = self._context_builder.build(user_message, session_id=session_id)
             return await self._policy.decide(context)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_decision_failed", extra={"session_id": session_id})
             return self._fallback_decision()
 
@@ -149,7 +145,7 @@ class AgentService:
         try:
             context = self._context_builder.build(user_message, session_id=session_id)
             decision = await self._policy.decide(context)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_decision_failed", extra={"session_id": session_id})
             return AgentResult(
                 decision=self._fallback_decision(), outcomes=[], status=AgentStatus.FAILED
@@ -157,7 +153,7 @@ class AgentService:
 
         try:
             result = await self._runner.execute(decision)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "agent_execution_failed",
                 extra={"session_id": session_id, "intent": decision.intent.value},
@@ -210,7 +206,7 @@ class AgentService:
                     session_id=session_id,
                     reason=outcome.error_message,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception(
                     "agent_approval_request_failed",
                     extra={"tool_name": outcome.tool_name},
@@ -257,10 +253,8 @@ class AgentService:
                 ),
                 trigger=gate_decision.trigger,
             )
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "council_invocation_failed", extra={"session_id": context.session_id}
-            )
+        except Exception:
+            logger.exception("council_invocation_failed", extra={"session_id": context.session_id})
             return None
 
         logger.info(
@@ -284,7 +278,7 @@ class AgentService:
         """
         try:
             tool = self.tool_executor.registry.get(tool_name)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_permission_lookup_failed")
             return None
         return tool.permission if tool is not None else None

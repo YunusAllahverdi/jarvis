@@ -9,7 +9,7 @@ from typing import Any
 class JsonFormatter(logging.Formatter):
     """Log kayıtlarını makine tarafından okunabilir JSON satırlarına dönüştürür."""
 
-    _standard_attributes = set(logging.makeLogRecord({}).__dict__)
+    _standard_attributes: frozenset[str] = frozenset(logging.makeLogRecord({}).__dict__)
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {

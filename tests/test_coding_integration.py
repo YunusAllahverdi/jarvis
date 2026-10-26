@@ -32,8 +32,8 @@ from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
 from app.tools.base import PermissionLevel
 from app.tools.defaults import register_filesystem_tools, register_terminal_tool
-from app.tools.registry import ToolRegistry
 from app.tools.executor import ToolExecutor
+from app.tools.registry import ToolRegistry
 
 _BUGGY_SOURCE = "def add(a, b):\n    return a - b\n"
 _FIXED_SOURCE = "def add(a, b):\n    return a + b\n"
@@ -131,9 +131,7 @@ def _build_loop(
     guard = PathGuard(str(root))
     registry = ToolRegistry()
     register_filesystem_tools(registry, guard=guard, writable=True)
-    register_terminal_tool(
-        registry, guard=guard, command_policy=CommandPolicy(), enabled=True
-    )
+    register_terminal_tool(registry, guard=guard, command_policy=CommandPolicy(), enabled=True)
 
     allowed = {PermissionLevel.READ, PermissionLevel.DANGEROUS}
     requires_approval: set[PermissionLevel] = set()

@@ -22,7 +22,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.admin import ADMIN_TOKEN_HEADER, router as admin_router
+from app.api.routes.admin import ADMIN_TOKEN_HEADER
+from app.api.routes.admin import router as admin_router
 from app.config.settings import Settings
 from app.security.audit import InMemoryAuditLog
 from app.services.llm_config import LLMConfigStore, SwitchableProvider
@@ -86,6 +87,7 @@ _UPDATE = {
 # 1-4. Okuma, yazma, gizlilik, canlı geçiş
 # ---------------------------------------------------------------------------
 
+
 def test_config_can_be_read(tmp_path: Path) -> None:
     """Geçerli yapılandırma okunabilmeli."""
     client, _, _, _ = _build(tmp_path)
@@ -133,6 +135,7 @@ def test_update_switches_the_live_provider(tmp_path: Path) -> None:
 # 5-9. Erişim kuralları
 # ---------------------------------------------------------------------------
 
+
 def test_local_host_without_a_token_is_allowed(tmp_path: Path) -> None:
     """Yerel adreste anahtar zorunlu olmamalı."""
     client, _, _, _ = _build(tmp_path, host="127.0.0.1")
@@ -177,6 +180,7 @@ def test_a_wrong_or_missing_token_is_refused(tmp_path: Path, headers: dict) -> N
 # ---------------------------------------------------------------------------
 # 10-11. İz ve eksik kurulum
 # ---------------------------------------------------------------------------
+
 
 def test_changing_the_address_is_audited(tmp_path: Path) -> None:
     """Konuşmaların nereye gittiğini değiştiren işlem iz bırakmalı."""

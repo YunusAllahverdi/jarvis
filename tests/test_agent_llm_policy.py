@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.adapters.llm.base import LLMProviderError, LLMUnavailableError
+from app.adapters.llm.base import LLMUnavailableError
 from app.agent.context import AgentContext, ContextBuilder
 from app.agent.llm_policy import (
     MAX_ACTIONS,
@@ -78,20 +78,20 @@ class _FailingProvider:
     async def generate(self, messages: Sequence[ChatMessage]) -> str:
         raise self._error
 
-    async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+    async def generate_with_tools(self, messages, tools):
         raise self._error
 
 
 class _StubRetrieval:
-    def retrieve(self, query, **kwargs):  # noqa: ANN001, ANN003, ANN201
+    def retrieve(self, query, **kwargs):
         return []
 
 
 class _StubUserModel:
-    def list_traits(self, **kwargs):  # noqa: ANN003, ANN201
+    def list_traits(self, **kwargs):
         return []
 
-    def build_profile(self, **kwargs):  # noqa: ANN003, ANN201
+    def build_profile(self, **kwargs):
         raise AssertionError("politika servis çağırmamalı")
 
 
@@ -296,9 +296,7 @@ class TestFallback:
 
     def test_provider_failure_uses_the_rule_based_fallback(self) -> None:
         """Yedek politika verilmişse deterministik davranışa düşülmeli."""
-        policy = LLMDecisionPolicy(
-            provider=_FailingProvider(), fallback=RuleBasedDecisionPolicy()
-        )
+        policy = LLMDecisionPolicy(provider=_FailingProvider(), fallback=RuleBasedDecisionPolicy())
 
         decision = _run(policy.decide(_context("25 * 17")))
 
@@ -323,7 +321,7 @@ class TestFallback:
         class _RaisingFallback:
             name = "raising"
 
-            async def decide(self, context):  # noqa: ANN001, ANN201
+            async def decide(self, context):
                 raise RuntimeError("fallback boom")
 
         policy = LLMDecisionPolicy(provider=_FailingProvider(), fallback=_RaisingFallback())
@@ -331,7 +329,13 @@ class TestFallback:
         assert _run(policy.decide(_context())).intent is Intent.CONVERSATION
 
     def test_policy_never_raises(self) -> None:
-        for reply in ("", "{}", "garbage", _payload("nope"), _payload("calculate", [{"tool": "x", "arguments": {}, "purpose": "y"}])):
+        for reply in (
+            "",
+            "{}",
+            "garbage",
+            _payload("nope"),
+            _payload("calculate", [{"tool": "x", "arguments": {}, "purpose": "y"}]),
+        ):
             assert _run(_policy(reply).decide(_context())) is not None
 
 
@@ -420,7 +424,9 @@ class TestSafetyBoundaries:
         decision = _run(_policy(reply).decide(_context()))
 
         assert len(decision.actions) == 2
-        assert decision.actions[1].arguments["query"] == {"$from": {"step": 0, "path": "trait_count"}}
+        assert decision.actions[1].arguments["query"] == {
+            "$from": {"step": 0, "path": "trait_count"}
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -498,10 +504,10 @@ class TestProviderBoundary:
         """Politika somut sağlayıcıya değil, Protocol'e bağımlı olmalı."""
 
         class _MinimalProvider:
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return _payload("conversation")
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError("kullanılmamalı")
 
         policy = LLMDecisionPolicy(provider=_MinimalProvider())
@@ -521,14 +527,14 @@ class TestProviderBoundary:
 
     def test_no_secret_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         secret = "sk-super-secret-api-key-1234567890"
-        policy = LLMDecisionPolicy(
-            provider=_ScriptedProvider("bozuk"), model_label="llama3.1"
-        )
+        policy = LLMDecisionPolicy(provider=_ScriptedProvider("bozuk"), model_label="llama3.1")
 
         with caplog.at_level(logging.DEBUG):
             _run(policy.decide(_context(f"benim anahtarım {secret}")))
 
-        combined = "\n".join(record.getMessage() + str(record.__dict__) for record in caplog.records)
+        combined = "\n".join(
+            record.getMessage() + str(record.__dict__) for record in caplog.records
+        )
         assert secret not in combined
 
     def test_model_label_is_logged_for_observability(

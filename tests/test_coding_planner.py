@@ -22,11 +22,11 @@ import asyncio
 import json
 from collections.abc import Sequence
 
+from app.adapters.llm.base import LLMProviderError
 from app.agent.models import ToolDescriptor
 from app.coding.models import Diagnosis, DiagnosisCategory, TaskSpec
 from app.coding.planner import CodingPlanner
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
-from app.adapters.llm.base import LLMProviderError
 from app.tools.base import PermissionLevel
 
 
@@ -157,8 +157,7 @@ def test_forward_reference_is_rejected() -> None:
 def test_plan_over_the_step_limit_is_rejected_not_truncated() -> None:
     """Bir planı sessizce kısaltmak, isteği sessizce değiştirmektir."""
     steps = [
-        {"tool": "read_file", "arguments": {"path": f"a{i}.py"}, "purpose": "oku"}
-        for i in range(5)
+        {"tool": "read_file", "arguments": {"path": f"a{i}.py"}, "purpose": "oku"} for i in range(5)
     ]
     provider = _ScriptedProvider(_plan_json(steps))
     planner = CodingPlanner(provider=provider, max_steps=3)

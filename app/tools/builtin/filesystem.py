@@ -19,6 +19,7 @@ verildiğinde kaydedilir — okumak ve yazmak iki ayrı karardır.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -78,9 +79,7 @@ class ReadFileTool(Tool[ReadFileInput]):
     """Çalışma dizinindeki bir metin dosyasını okur."""
 
     name = READ_FILE_TOOL_NAME
-    description = (
-        "Çalışma dizinindeki bir metin dosyasını okur. Satır aralığı verilebilir."
-    )
+    description = "Çalışma dizinindeki bir metin dosyasını okur. Satır aralığı verilebilir."
     permission = PermissionLevel.READ
     input_model = ReadFileInput
 
@@ -212,7 +211,7 @@ class GrepTool(Tool[GrepInput]):
             "truncated": len(matches) >= tool_input.limit,
         }
 
-    def _candidates(self, root: Path, glob: str):
+    def _candidates(self, root: Path, glob: str) -> Iterator[Path]:
         """Aranacak dosyaları üretir; kapalı ve gürültülü olanları atlar."""
 
         if root.is_file():
@@ -227,7 +226,9 @@ class GrepTool(Tool[GrepInput]):
                 continue
             yield candidate
 
-    def _search(self, path: Path, expression: re.Pattern[str], remaining: int) -> list[dict[str, Any]]:
+    def _search(
+        self, path: Path, expression: re.Pattern[str], remaining: int
+    ) -> list[dict[str, Any]]:
         """Tek bir dosyada eşleşmeleri toplar; okunamayan dosya sessizce atlanır."""
 
         try:

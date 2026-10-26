@@ -121,9 +121,7 @@ def _row_to_experience(row: sqlite3.Row) -> Experience:
         tool_calls=json.loads(row["tool_calls"]),
         user_state=json.loads(row["user_state"]) if row["user_state"] is not None else None,
         emotional_context=(
-            json.loads(row["emotional_context"])
-            if row["emotional_context"] is not None
-            else None
+            json.loads(row["emotional_context"]) if row["emotional_context"] is not None else None
         ),
         outcome=ExperienceOutcome(row["outcome"]),
         derived_memory_ids=json.loads(row["derived_memory_ids"]),
@@ -266,8 +264,7 @@ class SQLiteExperienceStore:
         """
         if before is not None:
             sql = (
-                "SELECT * FROM experiences WHERE occurred_at < ? "
-                "ORDER BY occurred_at DESC LIMIT ?"
+                "SELECT * FROM experiences WHERE occurred_at < ? ORDER BY occurred_at DESC LIMIT ?"
             )
             params: tuple[object, ...] = (_dt_to_str(before), limit)
         else:

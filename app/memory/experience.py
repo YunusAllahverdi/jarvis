@@ -22,7 +22,7 @@ Bu, hiçbir şema/migration değişikliği gerektirmez.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4

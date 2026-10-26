@@ -126,9 +126,7 @@ def test_files_endpoint_is_closed_without_a_guard() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _research_client(
-    handler=None, *, guard: NetworkGuard | None = None
-) -> TestClient:
+def _research_client(handler=None, *, guard: NetworkGuard | None = None) -> TestClient:
     """Ağa çıkmadan uç davranışını sınayan istemci.
 
     `httpx.AsyncClient` uç içinde kurulduğu için taşıma katmanı monkeypatch
@@ -160,10 +158,12 @@ def transport(monkeypatch: pytest.MonkeyPatch):
 
 def test_page_is_returned_as_readable_text(transport) -> None:
     """İçerik ÇİTLENMEDEN döner: buradaki okuyucu model değil, kullanıcıdır."""
-    transport(lambda request: httpx.Response(
-        200,
-        html="<html><head><title>Başlık</title></head><body><p>Merhaba</p></body></html>",
-    ))
+    transport(
+        lambda request: httpx.Response(
+            200,
+            html="<html><head><title>Başlık</title></head><body><p>Merhaba</p></body></html>",
+        )
+    )
     client = _research_client(guard=NetworkGuard())
 
     body = client.post("/api/research/fetch", json={"url": "https://ornek.test/a"}).json()
@@ -175,15 +175,17 @@ def test_page_is_returned_as_readable_text(transport) -> None:
 
 def test_script_and_style_do_not_leak_into_the_text(transport) -> None:
     """JavaScript kaynağı metne karışmamalı."""
-    transport(lambda request: httpx.Response(
-        200,
-        html="<html><body><script>var gizli=1;</script><p>Görünen</p></body></html>",
-    ))
+    transport(
+        lambda request: httpx.Response(
+            200,
+            html="<html><body><script>var gizli=1;</script><p>Görünen</p></body></html>",
+        )
+    )
     client = _research_client(guard=NetworkGuard())
 
-    content = client.post(
-        "/api/research/fetch", json={"url": "https://ornek.test/a"}
-    ).json()["content"]
+    content = client.post("/api/research/fetch", json={"url": "https://ornek.test/a"}).json()[
+        "content"
+    ]
 
     assert "Görünen" in content
     assert "gizli" not in content
@@ -200,9 +202,7 @@ def test_blocked_address_is_forbidden() -> None:
 
 def test_redirect_is_reported_but_not_followed(transport) -> None:
     """Yönlendirme izlenseydi, denetlenen adresle getirilen ayrışırdı."""
-    transport(lambda request: httpx.Response(
-        302, headers={"location": "https://baska.test/b"}
-    ))
+    transport(lambda request: httpx.Response(302, headers={"location": "https://baska.test/b"}))
     client = _research_client(guard=NetworkGuard())
 
     body = client.post("/api/research/fetch", json={"url": "https://ornek.test/a"}).json()
@@ -213,9 +213,11 @@ def test_redirect_is_reported_but_not_followed(transport) -> None:
 
 def test_binary_content_type_is_rejected(transport) -> None:
     """İkili içerik gösterilemez; indirilmesi yalnızca risk taşırdı."""
-    transport(lambda request: httpx.Response(
-        200, content=b"\x89PNG", headers={"content-type": "image/png"}
-    ))
+    transport(
+        lambda request: httpx.Response(
+            200, content=b"\x89PNG", headers={"content-type": "image/png"}
+        )
+    )
     client = _research_client(guard=NetworkGuard())
 
     response = client.post("/api/research/fetch", json={"url": "https://ornek.test/a.png"})

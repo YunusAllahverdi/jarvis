@@ -64,6 +64,7 @@ def _registry_with(tool: Tool) -> ToolRegistry:
 # 1-5. Politika davranışı
 # ---------------------------------------------------------------------------
 
+
 def test_policy_denies_unlisted_levels() -> None:
     """Hiçbir listede geçmeyen seviye reddedilmeli."""
     policy = ToolPermissionPolicy(allowed={PermissionLevel.READ})
@@ -113,6 +114,7 @@ def test_policy_shortcuts() -> None:
 # ---------------------------------------------------------------------------
 # 6-11. Executor entegrasyonu
 # ---------------------------------------------------------------------------
+
 
 def test_executor_runs_allowed_tool() -> None:
     """Serbest araç çalışmalı ve sonucu dönmeli."""
@@ -206,6 +208,7 @@ def test_executor_rejects_ambiguous_permission_source() -> None:
 # ---------------------------------------------------------------------------
 # 12. Bağlam entegrasyonu
 # ---------------------------------------------------------------------------
+
 
 def test_context_builder_marks_confirmation_from_policy() -> None:
     """Onay işareti executor ile aynı politikadan gelmeli."""

@@ -90,9 +90,7 @@ class ToolExecutor:
             ValueError: Her iki izin argümanı da verildiyse ya da hiçbiri verilmediyse.
         """
         if policy is not None and allowed_permissions is not None:
-            raise ValueError(
-                "allowed_permissions ve policy birlikte verilemez; birini seçin."
-            )
+            raise ValueError("allowed_permissions ve policy birlikte verilemez; birini seçin.")
         if policy is None and allowed_permissions is None:
             raise ValueError("allowed_permissions veya policy verilmelidir.")
 

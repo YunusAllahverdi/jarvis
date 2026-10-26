@@ -170,7 +170,9 @@ class _FailingSearchStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         return []
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         return []
 
     def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
@@ -198,7 +200,9 @@ class _FailingWriteStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         return []
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         return []
 
     def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
@@ -313,7 +317,9 @@ class TestBasicCognitiveMemoryLifecycle:
         )
 
         app_goal = create_app(
-            settings=settings, provider=_FakeChatProvider("ok"), memory_service=_goal_write_service(store)
+            settings=settings,
+            provider=_FakeChatProvider("ok"),
+            memory_service=_goal_write_service(store),
         )
         with TestClient(app_goal) as client:
             client.post("/api/chat", json={"message": _GOAL_MESSAGE})
@@ -348,7 +354,9 @@ class TestBasicCognitiveMemoryLifecycle:
         settings = _make_settings(tmp_path, memory_db_path=str(db_path))
 
         app_write = create_app(
-            settings=settings, provider=_FakeChatProvider("ok"), memory_service=_goal_write_service(store)
+            settings=settings,
+            provider=_FakeChatProvider("ok"),
+            memory_service=_goal_write_service(store),
         )
         with TestClient(app_write) as client:
             client.post("/api/chat", json={"message": _GOAL_MESSAGE})
@@ -394,7 +402,14 @@ class TestBasicCognitiveMemoryLifecycle:
             extractor=MemoryExtractor(
                 provider=_FakeMemoryLLMProvider(
                     _json_response(
-                        [{"memory_type": "fact", "content": "irrelevant", "temporality": "present", "status": "active"}]
+                        [
+                            {
+                                "memory_type": "fact",
+                                "content": "irrelevant",
+                                "temporality": "present",
+                                "status": "active",
+                            }
+                        ]
                     )
                 )
             ),
@@ -462,7 +477,9 @@ class TestBasicCognitiveMemoryLifecycle:
         assert response.json()["response"] == "2 + 3 sonucu 5."
         assert len(provider.calls) == 2
 
-    def test_context_message_limit_still_respected_with_memory_enabled(self, tmp_path: Path) -> None:
+    def test_context_message_limit_still_respected_with_memory_enabled(
+        self, tmp_path: Path
+    ) -> None:
         db_path = tmp_path / "memory.db"
         store = SQLiteMemoryStore(str(db_path))
         write_service = MemoryWriteService(
@@ -470,7 +487,9 @@ class TestBasicCognitiveMemoryLifecycle:
             store=store,
         )
         chat_provider = _FakeChatProvider("ok")
-        settings = _make_settings(tmp_path, memory_db_path=str(db_path), conversation_context_limit=2)
+        settings = _make_settings(
+            tmp_path, memory_db_path=str(db_path), conversation_context_limit=2
+        )
         app = create_app(
             settings=settings,
             provider=chat_provider,

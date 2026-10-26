@@ -36,7 +36,6 @@ from app.memory.record import MemoryRecord, MemoryStatus, MemoryType, Temporalit
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.services.memory_temporal import MemoryTemporalService, TemporalWriteResult
 
-
 # ---------------------------------------------------------------------------
 # Fixture / yardımcılar
 # ---------------------------------------------------------------------------
@@ -136,9 +135,7 @@ class TestFactReplacement:
         assert historical.content == "User lives in Istanbul."
         assert historical.invalid_at is not None
 
-    def test_search_excludes_invalidated_fact_by_default(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_search_excludes_invalidated_fact_by_default(self, store: SQLiteMemoryStore) -> None:
         service = MemoryTemporalService(store=store)
         service.write(_fact("User lives in Istanbul.", topic_key="user_residence"))
         service.write(_fact("User lives in Ankara.", topic_key="user_residence"))
@@ -155,9 +152,7 @@ class TestFactReplacement:
 
 
 class TestPreferenceReplacement:
-    def test_new_preference_invalidates_old_preference(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_new_preference_invalidates_old_preference(self, store: SQLiteMemoryStore) -> None:
         service = MemoryTemporalService(store=store)
         old = MemoryRecord(
             content="User prefers dark mode.",
@@ -252,9 +247,7 @@ class TestEventStatusTransitions:
 
 
 class TestIdempotenceAndSafety:
-    def test_invalidating_already_invalid_record_is_safe(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidating_already_invalid_record_is_safe(self, store: SQLiteMemoryStore) -> None:
         service = MemoryTemporalService(store=store)
         service.write(_fact("User lives in Istanbul.", topic_key="user_residence"))
         service.write(_fact("User lives in Ankara.", topic_key="user_residence"))
@@ -309,9 +302,7 @@ class TestIdempotenceAndSafety:
         assert fetched is not None
         assert fetched.invalid_at is None
 
-    def test_no_topic_key_never_triggers_conflict_check(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_no_topic_key_never_triggers_conflict_check(self, store: SQLiteMemoryStore) -> None:
         service = MemoryTemporalService(store=store)
         service.write(_fact("User lives in Istanbul."))  # topic_key yok
         result = service.write(_fact("User lives in Ankara."))  # topic_key yok
@@ -445,7 +436,9 @@ class TestNoPhysicalDelete:
                 return self._real.list_active(**kwargs)  # type: ignore[arg-type]
 
             def list_by_session(self, session_id: str, *, include_invalidated: bool = False):
-                return self._real.list_by_session(session_id, include_invalidated=include_invalidated)
+                return self._real.list_by_session(
+                    session_id, include_invalidated=include_invalidated
+                )
 
             def search(self, query: str, **kwargs: object):
                 return self._real.search(query, **kwargs)  # type: ignore[arg-type]

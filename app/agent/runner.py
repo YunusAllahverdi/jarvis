@@ -27,7 +27,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.agent.models import ActionOutcome, AgentDecision, AgentResult, AgentStatus, status_for
+from app.agent.models import (
+    ActionOutcome,
+    AgentAction,
+    AgentDecision,
+    AgentResult,
+    AgentStatus,
+    status_for,
+)
 from app.agent.references import (
     ERROR_UNRESOLVED_REFERENCE,
     ReferenceError,
@@ -64,9 +71,7 @@ class AgentRunner:
         yapılandırılmış sonuçlara çevrilir, beklenmedik hatalar burada yutulur.
         """
         if not decision.has_actions:
-            return AgentResult(
-                decision=decision, outcomes=[], status=AgentStatus.NO_ACTION
-            )
+            return AgentResult(decision=decision, outcomes=[], status=AgentStatus.NO_ACTION)
 
         if decision.requires_confirmation:
             logger.info(
@@ -90,9 +95,7 @@ class AgentRunner:
 
         for action in decision.actions:
             try:
-                arguments = resolve_arguments(
-                    action.arguments, previous_results=previous_results
-                )
+                arguments = resolve_arguments(action.arguments, previous_results=previous_results)
             except ReferenceError as exc:
                 logger.warning(
                     "agent_action_reference_unresolved",
@@ -128,7 +131,7 @@ class AgentRunner:
         )
         return AgentResult(decision=decision, outcomes=outcomes, status=status)
 
-    def _pending_outcome(self, action) -> ActionOutcome:  # noqa: ANN001
+    def _pending_outcome(self, action: AgentAction) -> ActionOutcome:
         """Onay bekleyen bir eylem için, kayıt açılabilecek bir sonuç üretir.
 
         BURASI BİR BOŞLUĞU KAPATIR. Daha önce bu eylemler yalnızca
@@ -160,7 +163,7 @@ class AgentRunner:
     async def _execute_action(
         self,
         decision: AgentDecision,
-        action,  # noqa: ANN001
+        action: AgentAction,
         arguments: dict[str, Any],
     ) -> ActionOutcome:
         """Tek bir eylemi çözülmüş argümanlarla yürütür; hiçbir hata dışarı sızmaz.
@@ -172,7 +175,7 @@ class AgentRunner:
         call.arguments = arguments
         try:
             result = await self._tool_executor.execute(call)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ToolExecutor sözleşmesi gereği buraya düşülmemeli; yine de bir
             # savunma katmanı bırakıldı, çünkü tek bir tool'un beklenmedik
             # davranışı asla tüm planı çökertmemeli.

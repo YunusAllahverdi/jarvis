@@ -55,9 +55,7 @@ Anahtar taşıyan hiçbir değişken listede yoktur ve olmamalıdır.
 def _child_environment() -> dict[str, str]:
     """Alt süreç için asgari ortamı kurar."""
 
-    environment = {
-        key: os.environ[key] for key in _INHERITED_ENVIRONMENT_KEYS if key in os.environ
-    }
+    environment = {key: os.environ[key] for key in _INHERITED_ENVIRONMENT_KEYS if key in os.environ}
     # Alt süreç Python ise çıktısı tamponlanmasın; zaman aşımında yarım
     # kalan bir çalıştırmadan da bir şey öğrenebilelim.
     environment["PYTHONUNBUFFERED"] = "1"
@@ -166,5 +164,5 @@ async def _terminate(process: asyncio.subprocess.Process) -> tuple[bytes, bytes]
         process.kill()
         try:
             return await process.communicate()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return b"", b""

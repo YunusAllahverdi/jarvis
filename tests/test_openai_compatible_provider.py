@@ -81,6 +81,7 @@ _HELLO = [ChatMessage(role="user", content="merhaba")]
 # 1-4. İstek biçimi ve kimlik
 # ---------------------------------------------------------------------------
 
+
 def test_text_reply_is_parsed() -> None:
     """Düz metin cevabı çözülmeli."""
     assert _run(_provider(lambda r: _text_reply("selam")).generate(_HELLO)) == "selam"
@@ -121,6 +122,7 @@ def test_no_key_means_no_header() -> None:
 # 5-10. Araç sözleşmesi
 # ---------------------------------------------------------------------------
 
+
 def test_tool_definitions_are_translated() -> None:
     """Araç tanımı sözleşmenin function biçimine çevrilmeli."""
     seen, handler = _capture()
@@ -142,6 +144,7 @@ def test_tool_call_arguments_arrive_as_json_text_and_are_decoded() -> None:
     Çevrilmezse araç şeması boş bir sözlük görür ve çağrı sessizce
     argümansız çalışırdı.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -174,6 +177,7 @@ def test_tool_call_arguments_arrive_as_json_text_and_are_decoded() -> None:
 
 def test_object_arguments_are_also_accepted() -> None:
     """Bazı sağlayıcılar nesne döndürüyor; o da kabul edilmeli."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -207,6 +211,7 @@ def test_broken_arguments_are_reported_not_swallowed() -> None:
     Sessizce boş sözlüğe düşürmek, aracın argümanları hiç verilmemiş gibi
     çalışması demek olurdu.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -265,6 +270,7 @@ def test_assistant_tool_calls_are_serialised_as_text() -> None:
 # 11-15. Hata yolları
 # ---------------------------------------------------------------------------
 
+
 def test_missing_model_is_reported_clearly() -> None:
     """Model seçilmemişse anlaşılır bir yapılandırma hatası verilmeli."""
     with pytest.raises(LLMConfigurationError):
@@ -273,6 +279,7 @@ def test_missing_model_is_reported_clearly() -> None:
 
 def test_unreachable_provider_is_reported() -> None:
     """Bağlantı kurulamıyorsa kullanılamaz denmeli."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("bağlanamadı", request=request)
 
@@ -282,6 +289,7 @@ def test_unreachable_provider_is_reported() -> None:
 
 def test_error_body_message_is_surfaced() -> None:
     """Sağlayıcının açıklaması kullanıcıya taşınmalı."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": {"message": "kota doldu"}})
 
@@ -293,6 +301,7 @@ def test_error_body_message_is_surfaced() -> None:
 
 def test_error_message_does_not_leak_the_key() -> None:
     """Hata mesajı anahtarı sızdırmamalı."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, text="unauthorized")
 
@@ -304,6 +313,7 @@ def test_error_message_does_not_leak_the_key() -> None:
 
 def test_unexpected_shape_is_reported() -> None:
     """Beklenmeyen yanıt biçimi açık bir hata vermeli."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"beklenmeyen": True})
 

@@ -29,6 +29,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.adapters.llm.anthropic import (
     DEFAULT_BASE_URL as ANTHROPIC_BASE_URL,
+)
+from app.adapters.llm.anthropic import (
     AnthropicProvider,
 )
 from app.adapters.llm.base import LLMProvider
@@ -103,9 +105,7 @@ def build_llm_provider(
             api_key=api_key,
             timeout_seconds=timeout_seconds,
         )
-    return OllamaProvider(
-        base_url=base_url, model=model, timeout_seconds=timeout_seconds
-    )
+    return OllamaProvider(base_url=base_url, model=model, timeout_seconds=timeout_seconds)
 
 
 _DDL_CONFIG = """
@@ -287,7 +287,7 @@ class SwitchableProvider:
         if closer is not None:
             try:
                 await closer()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("llm_provider_close_failed")
 
     async def aclose(self) -> None:

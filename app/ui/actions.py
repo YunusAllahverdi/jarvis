@@ -109,9 +109,7 @@ class UIActionBus:
                 # En eskiyi at: aksiyonlar geçici niyetlerdir ve en yeni
                 # niyet, kullanıcının şu an konuştuğu şeye en yakın olandır.
                 dropped = queue.popleft()
-                logger.debug(
-                    "ui_action_dropped", extra={"panel": dropped.panel.value}
-                )
+                logger.debug("ui_action_dropped", extra={"panel": dropped.panel.value})
             queue.append(action)
 
         logger.info(

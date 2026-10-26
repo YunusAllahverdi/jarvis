@@ -25,10 +25,10 @@ from app.security.redaction import (
     redact_text,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1-2. Tanıma
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "text",
@@ -60,6 +60,7 @@ def test_harmless_text_is_untouched(text: str) -> None:
 # 3-4. Maskeleme kararı
 # ---------------------------------------------------------------------------
 
+
 def test_secret_key_name_masks_even_an_innocent_value() -> None:
     """Anahtar adı gizliyse değer okunmadan maskelenmeli.
 
@@ -83,6 +84,7 @@ def test_secret_looking_value_is_masked() -> None:
 # ---------------------------------------------------------------------------
 # 5-7. Yapı ve sınırlar
 # ---------------------------------------------------------------------------
+
 
 def test_nested_structures_are_walked_and_preserved() -> None:
     """İç içe yapılar gezilmeli ama biçimleri bozulmamalı."""
@@ -131,6 +133,7 @@ def test_non_string_values_pass_through() -> None:
 # ---------------------------------------------------------------------------
 # 8. Tek tanım
 # ---------------------------------------------------------------------------
+
 
 def test_extractor_and_redaction_share_one_definition() -> None:
     """İki kullanıcı da aynı kalıp listesini kullanmalı; ayrışamasınlar."""

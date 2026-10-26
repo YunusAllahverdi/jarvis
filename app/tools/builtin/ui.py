@@ -44,8 +44,7 @@ def _panel_catalog() -> str:
     da eksik bir liste sunulmaz.
     """
     return ", ".join(
-        f"{panel.value} ({_PANEL_DESCRIPTIONS.get(panel, panel.value)})"
-        for panel in UIPanel
+        f"{panel.value} ({_PANEL_DESCRIPTIONS.get(panel, panel.value)})" for panel in UIPanel
     )
 
 
@@ -91,7 +90,7 @@ class ShowPanelTool(Tool[ShowPanelInput]):
                 session_id=self._session_id,
                 reason=tool_input.reason,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ToolExecutionError("Panel açılamadı.") from exc
 
         return {

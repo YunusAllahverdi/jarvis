@@ -15,13 +15,13 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from app.security.audit import AuditAction, AuditEvent, AuditOutcome, safe_record
 from app.security.approvals import (
     ApprovalAlreadyDecidedError,
     ApprovalExpiredError,
     ApprovalNotFoundError,
     ApprovalRequest,
 )
+from app.security.audit import AuditAction, AuditEvent, AuditOutcome, safe_record
 from app.tools.base import PermissionLevel
 
 router = APIRouter(tags=["approvals"])

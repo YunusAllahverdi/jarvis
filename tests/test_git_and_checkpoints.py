@@ -34,9 +34,9 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.security.checkpoints import (
+    MAX_SNAPSHOT_BYTES,
     CheckpointNotFoundError,
     CheckpointNotRestorableError,
-    MAX_SNAPSHOT_BYTES,
     SQLiteCheckpointStore,
 )
 from app.security.paths import PathGuard
@@ -72,7 +72,6 @@ def store(workspace: Path) -> SQLiteCheckpointStore:
 
 def _git_repo(path: Path) -> None:
     """Testler için küçük bir depo kurar."""
-    env = {"GIT_CONFIG_GLOBAL": str(path / "gitconfig"), "PATH": ""}
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.name", "T"], cwd=path, check=True)
@@ -83,6 +82,7 @@ def _git_repo(path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 1-6. Git araçları
 # ---------------------------------------------------------------------------
+
 
 @_needs_git
 def test_git_status_lists_changes(guard: PathGuard, workspace: Path) -> None:
@@ -147,6 +147,7 @@ def test_git_tools_are_read_permission(guard: PathGuard) -> None:
 # 7-13. Checkpoint deposu
 # ---------------------------------------------------------------------------
 
+
 def test_existing_content_is_captured(store: SQLiteCheckpointStore, workspace: Path) -> None:
     """Değişiklikten önceki içerik kaydedilmeli."""
     record = store.record(workspace / "rapor.txt")
@@ -167,9 +168,7 @@ def test_a_missing_file_is_recorded_as_absent(
     assert record.existed is False
 
 
-def test_restore_puts_the_old_content_back(
-    store: SQLiteCheckpointStore, workspace: Path
-) -> None:
+def test_restore_puts_the_old_content_back(store: SQLiteCheckpointStore, workspace: Path) -> None:
     """Geri alma dosyayı eski hâline döndürmeli."""
     record = store.record(workspace / "rapor.txt")
     (workspace / "rapor.txt").write_text("bozuldu", encoding="utf-8")
@@ -179,9 +178,7 @@ def test_restore_puts_the_old_content_back(
     assert (workspace / "rapor.txt").read_text(encoding="utf-8") == "özgün\n"
 
 
-def test_restoring_an_absent_file_removes_it(
-    store: SQLiteCheckpointStore, workspace: Path
-) -> None:
+def test_restoring_an_absent_file_removes_it(store: SQLiteCheckpointStore, workspace: Path) -> None:
     """Değişiklikten önce yoktuysa geri alma onu kaldırmalı."""
     target = workspace / "yeni.txt"
     record = store.record(target)
@@ -198,9 +195,7 @@ def test_unknown_checkpoint_is_reported(store: SQLiteCheckpointStore) -> None:
         store.restore("olmayan")
 
 
-def test_a_large_file_is_marked_unrestorable(
-    store: SQLiteCheckpointStore, workspace: Path
-) -> None:
+def test_a_large_file_is_marked_unrestorable(store: SQLiteCheckpointStore, workspace: Path) -> None:
     """Kaydedilemeyen bir değişiklik geri alınabilir gibi görünmemeli."""
     big = workspace / "buyuk.txt"
     big.write_text("a" * (MAX_SNAPSHOT_BYTES + 10), encoding="utf-8")
@@ -227,6 +222,7 @@ def test_checkpoints_survive_a_new_store(workspace: Path) -> None:
 # ---------------------------------------------------------------------------
 # 14-15. Araçlarla birlikte
 # ---------------------------------------------------------------------------
+
 
 def test_write_file_produces_an_undoable_checkpoint(
     guard: PathGuard, store: SQLiteCheckpointStore, workspace: Path
@@ -270,6 +266,7 @@ def test_without_a_journal_the_change_is_marked_unrecoverable(
 # 16-18. API ve sınırlar
 # ---------------------------------------------------------------------------
 
+
 def _client(store: SQLiteCheckpointStore | None) -> TestClient:
     app = FastAPI()
     app.include_router(checkpoints_router, prefix="/api")
@@ -296,9 +293,7 @@ def test_api_lists_and_restores(
     assert (workspace / "rapor.txt").read_text(encoding="utf-8") == "özgün\n"
 
 
-def test_api_reports_an_unrestorable_point(
-    store: SQLiteCheckpointStore, workspace: Path
-) -> None:
+def test_api_reports_an_unrestorable_point(store: SQLiteCheckpointStore, workspace: Path) -> None:
     """Geri alınamayan nokta bulunamadıdan ayrı bir durum vermeli."""
     big = workspace / "buyuk.txt"
     big.write_text("a" * (MAX_SNAPSHOT_BYTES + 10), encoding="utf-8")

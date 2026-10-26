@@ -71,6 +71,7 @@ def _python(code: str) -> str:
 # 1-3. Normal çalışma
 # ---------------------------------------------------------------------------
 
+
 def test_allowed_command_runs_and_returns_output(tool: RunCommandTool) -> None:
     """Komut çalışmalı ve çıktısı taşınmalı."""
     result = _run(tool.execute(tool.input_model(command=_python("print('selam')"))))
@@ -83,9 +84,7 @@ def test_allowed_command_runs_and_returns_output(tool: RunCommandTool) -> None:
 def test_command_runs_in_the_workspace(tool: RunCommandTool, workspace: Path) -> None:
     """Çalışma dizini bekçinin kökü olmalı."""
     result = _run(
-        tool.execute(
-            tool.input_model(command=_python("import os; print(os.listdir('.'))"))
-        )
+        tool.execute(tool.input_model(command=_python("import os; print(os.listdir('.'))")))
     )
 
     assert "isaret.txt" in result["stdout"]
@@ -101,6 +100,7 @@ def test_exit_code_is_reported(tool: RunCommandTool) -> None:
 # ---------------------------------------------------------------------------
 # 4-5. Politika reddi
 # ---------------------------------------------------------------------------
+
 
 def test_unknown_command_is_not_run(tool: RunCommandTool) -> None:
     """Listede olmayan program çalıştırılmamalı."""
@@ -118,13 +118,12 @@ def test_chaining_is_not_run(tool: RunCommandTool) -> None:
 # 6-7. Zaman sınırı
 # ---------------------------------------------------------------------------
 
+
 def test_timeout_stops_the_process_and_is_reported(tool: RunCommandTool) -> None:
     """Süresi dolan komut sonlandırılmalı ve bu bildirilmeli."""
     result = _run(
         tool.execute(
-            tool.input_model(
-                command=_python("import time; time.sleep(30)"), timeout_seconds=1
-            )
+            tool.input_model(command=_python("import time; time.sleep(30)"), timeout_seconds=1)
         )
     )
 
@@ -142,9 +141,7 @@ def test_caller_cannot_raise_its_own_limit(workspace: Path) -> None:
 
     result = _run(
         tool.execute(
-            tool.input_model(
-                command=_python("import time; time.sleep(30)"), timeout_seconds=600
-            )
+            tool.input_model(command=_python("import time; time.sleep(30)"), timeout_seconds=600)
         )
     )
 
@@ -154,6 +151,7 @@ def test_caller_cannot_raise_its_own_limit(workspace: Path) -> None:
 # ---------------------------------------------------------------------------
 # 8. Ortam yalıtımı
 # ---------------------------------------------------------------------------
+
 
 def test_secrets_do_not_reach_the_child_process(
     tool: RunCommandTool, monkeypatch: pytest.MonkeyPatch
@@ -169,9 +167,7 @@ def test_secrets_do_not_reach_the_child_process(
     result = _run(
         tool.execute(
             tool.input_model(
-                command=_python(
-                    f"import os; print(os.environ.get('{_SECRET_VARIABLE}', 'YOK'))"
-                )
+                command=_python(f"import os; print(os.environ.get('{_SECRET_VARIABLE}', 'YOK'))")
             )
         )
     )
@@ -183,6 +179,7 @@ def test_secrets_do_not_reach_the_child_process(
 # ---------------------------------------------------------------------------
 # 9-11. Kayıt ve izin seviyesi
 # ---------------------------------------------------------------------------
+
 
 def test_tool_is_dangerous(tool: RunCommandTool) -> None:
     """Komut çalıştırmak en yüksek risk seviyesinde olmalı."""
@@ -219,6 +216,7 @@ def test_missing_prerequisites_register_nothing(workspace: Path) -> None:
 # 12-13. İzin duruşu
 # ---------------------------------------------------------------------------
 
+
 def _settings(**kwargs: object) -> Settings:
     defaults = dict(app_name="T", app_version="t", environment="test", ollama_model="x")
     defaults.update(kwargs)
@@ -248,9 +246,7 @@ def test_running_without_approval_is_blocked(workspace: Path) -> None:
         command_policy=CommandPolicy(allowed_commands=(program,)),
         enabled=True,
     )
-    executor = ToolExecutor(
-        registry, policy=_build_agent_policy(_settings(terminal_enabled=True))
-    )
+    executor = ToolExecutor(registry, policy=_build_agent_policy(_settings(terminal_enabled=True)))
 
     result = _run(
         executor.execute(ToolCall(name="run_command", arguments={"command": _python("print(1)")}))

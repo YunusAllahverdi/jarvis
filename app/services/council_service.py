@@ -122,7 +122,7 @@ class CouncilService:
             )
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("council_unexpected_failure", extra={"session_id": request.session_id})
             return CouncilResult(
                 status=CouncilStatus.FAILED,

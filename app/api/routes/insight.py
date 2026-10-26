@@ -119,7 +119,7 @@ async def list_memory_records(
             if query.strip()
             else store.list_active(memory_type=parsed_type, limit=limit)
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("memory_list_failed")
         raise _unavailable("memory_read_failed", "Bellek okunamadı.") from None
 
@@ -181,7 +181,7 @@ async def list_experiences(
             if session_id
             else store.list_recent(limit=limit)
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("experience_list_failed")
         raise _unavailable("experience_read_failed", "Deneyimler okunamadı.") from None
 
@@ -237,7 +237,7 @@ async def read_system_status(request: Request) -> SystemStatusResponse:
     try:
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage(Path.cwd().anchor or "/")
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("system_status_failed")
         raise _unavailable("system_status_failed", "Sistem durumu okunamadı.") from None
 

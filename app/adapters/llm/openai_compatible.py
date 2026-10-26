@@ -16,8 +16,8 @@ API anahtarı yalnızca `Authorization` başlığında taşınır; hata mesajlar
 ve loglara hiçbir şekilde girmez.
 """
 
-from collections.abc import Sequence
 import json
+from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -176,9 +176,7 @@ class OpenAICompatibleProvider:
             tool_calls = self._parse_tool_calls(message.get("tool_calls"))
             return LLMResponse(content=content, tool_calls=tool_calls)
         except (KeyError, TypeError, ValueError) as exc:
-            raise LLMResponseError(
-                "Sağlayıcı beklenen sohbet yanıt biçimini döndürmedi."
-            ) from exc
+            raise LLMResponseError("Sağlayıcı beklenen sohbet yanıt biçimini döndürmedi.") from exc
 
     @staticmethod
     def _parse_tool_calls(raw_calls: Any) -> list[ToolCall]:

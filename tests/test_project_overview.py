@@ -67,6 +67,7 @@ def _overview(tool: ProjectOverviewTool) -> dict:
 # 1-5. Özetin içeriği
 # ---------------------------------------------------------------------------
 
+
 def test_languages_are_derived_from_the_files(tool: ProjectOverviewTool) -> None:
     """Dil dağılımı dosyalardan çıkarılmalı."""
     languages = {entry["name"]: entry["files"] for entry in _overview(tool)["languages"]}
@@ -111,6 +112,7 @@ def test_structure_reports_top_level_folders(tool: ProjectOverviewTool) -> None:
 # 6-9. Sınırlar ve dayanıklılık
 # ---------------------------------------------------------------------------
 
+
 def test_noisy_directories_are_not_counted(tool: ProjectOverviewTool) -> None:
     """node_modules özeti bozmamalı."""
     overview = _overview(tool)
@@ -152,6 +154,7 @@ def test_outside_the_root_is_refused(tool: ProjectOverviewTool) -> None:
 # ---------------------------------------------------------------------------
 # 10. Sözleşme
 # ---------------------------------------------------------------------------
+
 
 def test_tool_is_read_only_and_registered(project: Path) -> None:
     """Okuma yeteneğinin parçası olmalı; yazma izni gerektirmemeli."""

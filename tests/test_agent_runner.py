@@ -137,11 +137,7 @@ class TestSuccessfulExecution:
         assert all(o.success for o in result.outcomes)
 
     def test_outcome_count_matches_action_count(self) -> None:
-        result = _run(
-            _runner().execute(
-                _decision(*[_action("get_time") for _ in range(4)])
-            )
-        )
+        result = _run(_runner().execute(_decision(*[_action("get_time") for _ in range(4)])))
 
         assert len(result.outcomes) == 4
 
@@ -213,7 +209,7 @@ class TestFailureIsolation:
         """ToolExecutor sözleşmeyi ihlal edip patlasa bile plan çökmemeli."""
 
         class _RaisingExecutor:
-            async def execute(self, call):  # noqa: ANN001, ANN201
+            async def execute(self, call):
                 raise RuntimeError("executor contract violated")
 
         runner = AgentRunner(tool_executor=_RaisingExecutor())  # type: ignore[arg-type]
@@ -299,9 +295,7 @@ class TestOtherBehaviour:
         memory_store.add(MemoryRecord(content="python"))
         experience_store = SQLiteExperienceStore(db)
         experience_store.add(
-            Experience(
-                session_id="s", occurred_at=_NOW, user_message="x", assistant_response="y"
-            )
+            Experience(session_id="s", occurred_at=_NOW, user_message="x", assistant_response="y")
         )
         registry = build_default_tool_registry()
         registry.register(_ExplodingTool())

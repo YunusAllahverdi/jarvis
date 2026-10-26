@@ -143,9 +143,7 @@ async def list_files(
         )
 
     try:
-        children = sorted(
-            target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())
-        )
+        children = sorted(target.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

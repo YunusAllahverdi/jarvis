@@ -42,7 +42,9 @@ def workspace(tmp_path: Path) -> Path:
     (tmp_path / "app" / "main.py").write_text(
         "def merhaba():\n    return 'selam'\n", encoding="utf-8"
     )
-    (tmp_path / "notlar.txt").write_text("\n".join(f"satır {i}" for i in range(1, 51)), encoding="utf-8")
+    (tmp_path / "notlar.txt").write_text(
+        "\n".join(f"satır {i}" for i in range(1, 51)), encoding="utf-8"
+    )
     (tmp_path / ".env").write_text("JARVIS_API_KEY=cok-gizli-deger\n", encoding="utf-8")
     (tmp_path / "resim.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00gizli")
     (tmp_path / "node_modules").mkdir()
@@ -58,6 +60,7 @@ def guard(workspace: Path) -> PathGuard:
 # ---------------------------------------------------------------------------
 # 1-5. read_file
 # ---------------------------------------------------------------------------
+
 
 def test_read_file_reads_a_file_inside_the_root(guard: PathGuard) -> None:
     """Kök içindeki dosya okunabilmeli."""
@@ -105,6 +108,7 @@ def test_read_file_refuses_binary(guard: PathGuard) -> None:
 # 6-7. list_dir
 # ---------------------------------------------------------------------------
 
+
 def test_list_dir_lists_entries_with_relative_paths(guard: PathGuard) -> None:
     """Listeleme göreli yol döndürmeli."""
     result = _run(ListDirTool(guard=guard).execute(ListDirTool.input_model(path=".")))
@@ -130,6 +134,7 @@ def test_list_dir_hides_closed_files_entirely(guard: PathGuard) -> None:
 # ---------------------------------------------------------------------------
 # 8-11. grep
 # ---------------------------------------------------------------------------
+
 
 def test_grep_returns_matches_with_relative_paths(guard: PathGuard) -> None:
     """Arama sonucu göreli yol ve satır numarası taşımalı."""
@@ -168,6 +173,7 @@ def test_grep_reports_an_invalid_expression(guard: PathGuard) -> None:
 # 12-15. Sözleşme
 # ---------------------------------------------------------------------------
 
+
 def test_all_read_tools_are_read_permission(guard: PathGuard) -> None:
     """Üçü de salt okunur olmalı."""
     for tool in (ReadFileTool(guard=guard), ListDirTool(guard=guard), GrepTool(guard=guard)):
@@ -203,6 +209,7 @@ def test_errors_do_not_leak_absolute_paths(guard: PathGuard, workspace: Path) ->
 # 16-18. Uygulama bağlantısı
 # ---------------------------------------------------------------------------
 
+
 def _app_settings(tmp_path: Path, **kwargs: object):
     from app.config.settings import Settings
 
@@ -218,7 +225,9 @@ def _app_settings(tmp_path: Path, **kwargs: object):
 
 
 def _agent_tool_names(app) -> set[str]:  # type: ignore[no-untyped-def]
-    return {tool.name for tool in app.state.agent_service._context_builder._tool_registry.list_tools()}
+    return {
+        tool.name for tool in app.state.agent_service._context_builder._tool_registry.list_tools()
+    }
 
 
 def test_app_registers_file_tools_when_a_workspace_is_configured(
@@ -352,9 +361,7 @@ def test_edit_file_refuses_a_missing_match(guard: PathGuard) -> None:
     with pytest.raises(ToolExecutionError):
         _run(
             EditFileTool(guard=guard).execute(
-                EditFileTool.input_model(
-                    path="app/main.py", old_string="hiç yok", new_string="x"
-                )
+                EditFileTool.input_model(path="app/main.py", old_string="hiç yok", new_string="x")
             )
         )
 
@@ -447,9 +454,7 @@ def test_app_separates_reading_from_writing(tmp_path: Path, workspace: Path) -> 
         assert "write_file" not in names
 
     writable = create_app(
-        settings=_app_settings(
-            tmp_path, workspace_root=str(workspace), workspace_writable=True
-        )
+        settings=_app_settings(tmp_path, workspace_root=str(workspace), workspace_writable=True)
     )
     with TestClient(writable):
         assert {"write_file", "edit_file"} <= _agent_tool_names(writable)

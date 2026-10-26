@@ -96,7 +96,9 @@ def _trait(**overrides: Any) -> UserTrait:
     return UserTrait(**defaults)
 
 
-def _exp(*, user_message: str = "python", day: int = 26, tools: list[str] | None = None) -> Experience:
+def _exp(
+    *, user_message: str = "python", day: int = 26, tools: list[str] | None = None
+) -> Experience:
     return Experience(
         session_id="sess-1",
         occurred_at=datetime(2026, 8, day, 20, 0, tzinfo=UTC),
@@ -147,9 +149,7 @@ class TestUserModelService:
         assert set(profile.traits_by_type) == {t.value for t in TraitType}
         assert profile.trait_count == 0
 
-    def test_missing_experience_store_yields_empty_but_valid_stats(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_experience_store_yields_empty_but_valid_stats(self, tmp_path: Path) -> None:
         store = SQLiteUserTraitStore(str(tmp_path / "memory.db"))
         service = UserModelService(trait_store=store)
 
@@ -330,9 +330,7 @@ class TestUserModelEndpoints:
 
 
 class TestEndpointErrorBehaviour:
-    def test_endpoints_return_503_when_the_user_model_is_not_wired(
-        self, tmp_path: Path
-    ) -> None:
+    def test_endpoints_return_503_when_the_user_model_is_not_wired(self, tmp_path: Path) -> None:
         app = create_app(settings=_make_settings(tmp_path), provider=_FakeChatProvider())
 
         with TestClient(app) as client:
@@ -350,9 +348,7 @@ class TestEndpointErrorBehaviour:
             assert client.get("/api/user/profile", params={"min_confidence": 2}).status_code == 422
             assert client.get("/api/user/traits", params={"limit": 0}).status_code == 422
             assert client.get("/api/user/traits", params={"offset": -1}).status_code == 422
-            assert (
-                client.get("/api/user/traits", params={"trait_type": "nope"}).status_code == 422
-            )
+            assert client.get("/api/user/traits", params={"trait_type": "nope"}).status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -386,9 +382,7 @@ class TestApplicationWiring:
             assert app.state.user_trait_store._db_path == settings.memory_db_path
             assert [p.name for p in tmp_path.glob("*.db")] == ["memory.db"]
 
-    def test_auto_wired_learning_receives_the_auto_wired_sources(
-        self, tmp_path: Path
-    ) -> None:
+    def test_auto_wired_learning_receives_the_auto_wired_sources(self, tmp_path: Path) -> None:
         """Öğrenme servisi, lifespan'de kurulan bellek ve deneyim depolarını almalı."""
         app = create_app(settings=_make_settings(tmp_path))
 
@@ -448,9 +442,7 @@ class TestApplicationWiring:
 
             with TestClient(main_module.app):
                 assert db_path.exists()
-                assert isinstance(
-                    main_module.app.state.user_trait_store, SQLiteUserTraitStore
-                )
+                assert isinstance(main_module.app.state.user_trait_store, SQLiteUserTraitStore)
         finally:
             get_settings.cache_clear()
             importlib.reload(main_module)

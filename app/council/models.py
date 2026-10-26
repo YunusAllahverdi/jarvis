@@ -166,9 +166,7 @@ class CouncilResult(BaseModel):
 
     @property
     def ok(self) -> bool:
-        return self.status is CouncilStatus.COMPLETED and bool(
-            (self.final_answer or "").strip()
-        )
+        return self.status is CouncilStatus.COMPLETED and bool((self.final_answer or "").strip())
 
 
 class CouncilGateDecision(BaseModel):

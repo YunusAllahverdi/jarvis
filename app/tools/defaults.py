@@ -1,35 +1,38 @@
 """Jarvis başlangıcında kaydedilecek güvenli built-in tool'lar."""
 
+from typing import Any
+
 from app.notes.store import NoteStore
-from app.services.memory_retrieval import MemoryRetrievalService
-from app.services.user_model_service import UserModelService
 from app.security.checkpoints import ChangeJournal
 from app.security.commands import CommandPolicy
 from app.security.network import NetworkGuard
 from app.security.paths import PathGuard
-from app.tools.builtin.maps import MapsDirectionsTool, MapsGeocodeTool, MapsPlacesTool
-from app.tools.builtin.notes import NoteSearchTool, NoteWriteTool
-from app.tools.builtin.research import FetchUrlTool
-from app.tools.builtin.ui import ShowPanelTool
-from app.ui.actions import UIActionBus
+from app.services.memory_retrieval import MemoryRetrievalService
+from app.services.user_model_service import UserModelService
+from app.tools.base import Tool
 from app.tools.builtin import (
     CalculatorTool,
-    GetDateTool,
     EditFileTool,
+    GetDateTool,
     GetTimeTool,
     GitDiffTool,
     GitStatusTool,
     GrepTool,
     ListDirTool,
-    ProjectOverviewTool,
     MemorySearchTool,
+    ProjectOverviewTool,
     ReadFileTool,
     RunCommandTool,
-    WriteFileTool,
     SystemStatusTool,
     UserProfileTool,
+    WriteFileTool,
 )
+from app.tools.builtin.maps import MapsDirectionsTool, MapsGeocodeTool, MapsPlacesTool
+from app.tools.builtin.notes import NoteSearchTool, NoteWriteTool
+from app.tools.builtin.research import FetchUrlTool
+from app.tools.builtin.ui import ShowPanelTool
 from app.tools.registry import ToolRegistry
+from app.ui.actions import UIActionBus
 
 
 def build_default_tool_registry(*, timezone_name: str | None = None) -> ToolRegistry:
@@ -156,9 +159,7 @@ def register_note_tools(
     return [tool.name for tool in tools]
 
 
-def register_ui_tool(
-    registry: ToolRegistry, *, bus: UIActionBus | None = None
-) -> list[str]:
+def register_ui_tool(registry: ToolRegistry, *, bus: UIActionBus | None = None) -> list[str]:
     """Panel açma aracını kaydeder.
 
     Kanal verilmezse araç hiç var olmaz. Panel açmak READ seviyesindedir:
@@ -247,7 +248,7 @@ def register_maps_tools(
         return []
 
     clean_key = api_key.strip()
-    tools = [
+    tools: list[Tool[Any]] = [
         MapsGeocodeTool(api_key=clean_key, timeout_seconds=timeout_seconds),
         MapsDirectionsTool(api_key=clean_key, timeout_seconds=timeout_seconds),
         MapsPlacesTool(api_key=clean_key, timeout_seconds=timeout_seconds),

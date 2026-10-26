@@ -31,9 +31,15 @@ import json
 from collections.abc import Sequence
 
 from app.agent.context import AgentContext
-from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, escape_untrusted, fence
 from app.agent.models import AgentResult, ToolDescriptor
 from app.core.chat import ChatMessage
+from app.security.fencing import UNTRUSTED_CLOSE, UNTRUSTED_OPEN, fence
+
+# `escape_untrusted` burada kullanılmaz ama modül üzerinden YENİDEN DIŞA
+# AKTARILIR: `test_security_fencing` tüm tüketicilerin tek kaçış tanımını
+# paylaştığını bu isim üzerinden doğrular. Açık takma ad biçimi, linter'a
+# bunun kasıtlı bir re-export olduğunu söyler.
+from app.security.fencing import escape_untrusted as escape_untrusted
 
 # ---------------------------------------------------------------------------
 # Güvenilmez içerik sınırlama

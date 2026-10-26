@@ -97,9 +97,7 @@ def _title_of(html: str) -> str:
 async def fetch_page(body: FetchRequest, request: Request) -> FetchResponse:
     """Bir adresi sunucu üzerinden getirir ve metnini döndürür."""
     guard = _guard(request)
-    timeout = float(
-        getattr(request.app.state.settings, "research_timeout_seconds", 20.0)
-    )
+    timeout = float(getattr(request.app.state.settings, "research_timeout_seconds", 20.0))
 
     try:
         url = guard.validate(body.url)

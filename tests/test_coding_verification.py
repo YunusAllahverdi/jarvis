@@ -81,9 +81,9 @@ def test_zero_exit_code_passes() -> None:
 
 def test_non_zero_exit_code_fails_with_a_diagnosis() -> None:
     verification = _run(
-        _verifier(
-            _command_tool({"exit_code": 1, "stdout": "FAILED tests/t.py::x - boom"})
-        ).verify("pytest -q")
+        _verifier(_command_tool({"exit_code": 1, "stdout": "FAILED tests/t.py::x - boom"})).verify(
+            "pytest -q"
+        )
     )
 
     assert verification.passed is False
@@ -92,7 +92,7 @@ def test_non_zero_exit_code_fails_with_a_diagnosis() -> None:
 
 
 def test_optimistic_output_cannot_override_the_exit_code() -> None:
-    """"Her şey yolunda" diyen bir çıktı, sıfır olmayan çıkış kodunu geçersiz kılamaz."""
+    """ "Her şey yolunda" diyen bir çıktı, sıfır olmayan çıkış kodunu geçersiz kılamaz."""
     verification = _run(
         _verifier(
             _command_tool({"exit_code": 2, "stdout": "All tests passed! Everything is fine."})
@@ -129,9 +129,9 @@ def test_unregistered_tool_does_not_run() -> None:
 def test_pending_approval_is_not_a_failure() -> None:
     """Çalıştırılmamış bir testin sonucu yoktur; başarısızlık sayılamaz."""
     verification = _run(
-        _verifier(
-            _command_tool({"exit_code": 0}, permission=PermissionLevel.DANGEROUS)
-        ).verify("pytest -q")
+        _verifier(_command_tool({"exit_code": 0}, permission=PermissionLevel.DANGEROUS)).verify(
+            "pytest -q"
+        )
     )
 
     assert verification.ran is False

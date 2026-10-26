@@ -75,9 +75,7 @@ def test_local_with_token_requires_it() -> None:
     client = _client(token=_TOKEN)
 
     assert client.get("/api/chat").status_code == 401
-    assert (
-        client.get("/api/chat", headers={API_TOKEN_HEADER: _TOKEN}).status_code == 200
-    )
+    assert client.get("/api/chat", headers={API_TOKEN_HEADER: _TOKEN}).status_code == 200
 
 
 def test_non_local_without_token_rejects_everything() -> None:
@@ -91,9 +89,7 @@ def test_non_local_without_token_rejects_everything() -> None:
 def test_non_local_with_token_is_allowed() -> None:
     client = _client(token=_TOKEN, host="0.0.0.0")
 
-    assert (
-        client.get("/api/chat", headers={API_TOKEN_HEADER: _TOKEN}).status_code == 200
-    )
+    assert client.get("/api/chat", headers={API_TOKEN_HEADER: _TOKEN}).status_code == 200
 
 
 def test_wrong_token_is_rejected() -> None:

@@ -110,7 +110,7 @@ def test_endpoint_is_closed_when_the_service_is_absent() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _audio(chunks: bytes = b"ID3ses") :
+def _audio(chunks: bytes = b"ID3ses"):
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -177,20 +177,27 @@ def test_text_over_the_limit_is_rejected() -> None:
 
 
 def test_invalid_key_becomes_a_readable_message() -> None:
-    handler = lambda request: httpx.Response(401, json={"detail": "unauthorized"})
+    def handler(request):
+        return httpx.Response(401, json={"detail": "unauthorized"})
+
     with pytest.raises(SpeechError, match="anahtarı geçersiz"):
         _run(_collect(_service(handler)))
 
 
 def test_unknown_voice_becomes_a_readable_message() -> None:
     """Eski varsayılan "salli" tam da bunu döndürürdü."""
-    handler = lambda request: httpx.Response(404, json={"detail": "voice not found"})
+
+    def handler(request):
+        return httpx.Response(404, json={"detail": "voice not found"})
+
     with pytest.raises(SpeechError, match="ses kimliği"):
         _run(_collect(_service(handler)))
 
 
 def test_error_message_does_not_leak_the_api_key() -> None:
-    handler = lambda request: httpx.Response(500, text="boom")
+    def handler(request):
+        return httpx.Response(500, text="boom")
+
     with pytest.raises(SpeechError) as excinfo:
         _run(_collect(_service(handler)))
 
@@ -203,7 +210,10 @@ def test_failure_is_reported_before_the_stream_opens() -> None:
     Akış doğrudan yanıta bağlansaydı, başlıklar çoktan 200 gitmiş olur ve
     tarayıcı sebebini öğrenemeden bozuk bir dosya indirirdi.
     """
-    handler = lambda request: httpx.Response(401, json={"detail": "unauthorized"})
+
+    def handler(request):
+        return httpx.Response(401, json={"detail": "unauthorized"})
+
     response = _client(_service(handler)).post("/api/speech/tts", json={"text": "merhaba"})
 
     assert response.status_code == 502
@@ -226,10 +236,13 @@ def test_successful_request_returns_audio() -> None:
 
 def test_voice_list_is_parsed() -> None:
     """Kimlikler rastgele dizelerdir; kullanıcı onları ezberleyemez."""
-    handler = lambda request: httpx.Response(
-        200,
-        json={"voices": [{"voice_id": "abc123", "name": "Rachel", "extra": 1}]},
-    )
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={"voices": [{"voice_id": "abc123", "name": "Rachel", "extra": 1}]},
+        )
+
     response = _client(_service(handler)).get("/api/speech/voices")
 
     assert response.status_code == 200

@@ -31,10 +31,7 @@ def _iteration(*outcomes: ActionOutcome, verification: Verification | None = Non
     return Iteration(
         index=0,
         plan=CodingPlan(
-            steps=[
-                AgentAction(tool_name=outcome.tool_name, purpose="adım")
-                for outcome in outcomes
-            ]
+            steps=[AgentAction(tool_name=outcome.tool_name, purpose="adım") for outcome in outcomes]
         ),
         outcomes=list(outcomes),
         verification=verification,
@@ -59,9 +56,7 @@ def test_every_status_gets_a_headline() -> None:
 
 
 def test_changed_files_are_listed() -> None:
-    outcome = ActionOutcome(
-        tool_name="edit_file", success=True, arguments={"path": "app/x.py"}
-    )
+    outcome = ActionOutcome(tool_name="edit_file", success=True, arguments={"path": "app/x.py"})
     summary = build_summary(_result(CodingStatus.COMPLETED, _iteration(outcome)))
 
     assert "app/x.py" in summary
@@ -69,9 +64,7 @@ def test_changed_files_are_listed() -> None:
 
 def test_absence_of_changes_is_stated_explicitly() -> None:
     """Doğrulama geçmiş ama hiçbir dosya değişmemişse bu bilinmelidir."""
-    outcome = ActionOutcome(
-        tool_name="read_file", success=True, arguments={"path": "app/x.py"}
-    )
+    outcome = ActionOutcome(tool_name="read_file", success=True, arguments={"path": "app/x.py"})
     summary = build_summary(_result(CodingStatus.COMPLETED, _iteration(outcome)))
 
     assert "Hiçbir dosya değiştirilmedi." in summary
@@ -84,9 +77,7 @@ def test_failed_steps_are_not_hidden() -> None:
             CodingStatus.VERIFICATION_FAILED,
             _iteration(
                 ActionOutcome(tool_name="read_file", success=True, arguments={"path": "a.py"}),
-                ActionOutcome(
-                    tool_name="edit_file", success=False, error_code="invalid_arguments"
-                ),
+                ActionOutcome(tool_name="edit_file", success=False, error_code="invalid_arguments"),
             ),
         )
     )

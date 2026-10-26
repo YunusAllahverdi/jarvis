@@ -86,7 +86,7 @@ class _CouncilProvider:
             return json.dumps(self.review)
         return self.answer
 
-    async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+    async def generate_with_tools(self, messages, tools):
         raise AssertionError("Council tool-calling kullanmamalı")
 
 
@@ -115,8 +115,9 @@ def _members(*providers: _CouncilProvider) -> list[CouncilMember]:
     ]
 
 
-def _council(*providers: _CouncilProvider, chairman: _CouncilProvider | None = None,
-             **overrides: Any) -> CouncilService:
+def _council(
+    *providers: _CouncilProvider, chairman: _CouncilProvider | None = None, **overrides: Any
+) -> CouncilService:
     members = _members(*providers)
     chairman_member = (
         CouncilMember(member_id="chairman", provider=chairman)
@@ -138,7 +139,9 @@ def _settings(tmp_path: Path, **kwargs: Any) -> Settings:
     return Settings(**defaults)
 
 
-def _agent(*, council: CouncilService | None = None, gate: CouncilGate | None = None) -> AgentService:
+def _agent(
+    *, council: CouncilService | None = None, gate: CouncilGate | None = None
+) -> AgentService:
     registry = build_default_tool_registry()
     return AgentService(
         context_builder=ContextBuilder(
@@ -171,9 +174,15 @@ def _systems(sent: list[ChatMessage]) -> list[ChatMessage]:
 class TestCouncilService:
     def test_full_deliberation_completes(self) -> None:
         service = _council(
-            _CouncilProvider(answer="A", review={"rankings": ["B", "C"], "scores": {}, "criticisms": []}),
-            _CouncilProvider(answer="B", review={"rankings": ["A", "C"], "scores": {}, "criticisms": []}),
-            _CouncilProvider(answer="C", review={"rankings": ["A", "B"], "scores": {}, "criticisms": []}),
+            _CouncilProvider(
+                answer="A", review={"rankings": ["B", "C"], "scores": {}, "criticisms": []}
+            ),
+            _CouncilProvider(
+                answer="B", review={"rankings": ["A", "C"], "scores": {}, "criticisms": []}
+            ),
+            _CouncilProvider(
+                answer="C", review={"rankings": ["A", "B"], "scores": {}, "criticisms": []}
+            ),
         )
 
         result = _run(service.deliberate(CouncilRequest(task="Görev")))
@@ -262,10 +271,10 @@ class TestCouncilService:
 
     def test_service_never_raises(self) -> None:
         class _Exploding:
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 raise RuntimeError("boom")
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise RuntimeError("boom")
 
         service = _council(_Exploding(), _Exploding())  # type: ignore[arg-type]
@@ -278,9 +287,12 @@ class TestCouncilService:
         source = inspect.getsource(council_service_module)
 
         for forbidden in (
-            "from app.tools", "import app.tools",
-            "from app.agent", "import app.agent",
-            "from app.services.agent_service", "AgentRunner(",
+            "from app.tools",
+            "import app.tools",
+            "from app.agent",
+            "import app.agent",
+            "from app.services.agent_service",
+            "AgentRunner(",
         ):
             assert forbidden not in source
 
@@ -293,7 +305,9 @@ class TestCouncilService:
 class TestAgentIntegration:
     def test_council_does_not_run_without_a_gate(self) -> None:
         """Kapısız bir Council her mesajda çalışırdı — engellenmeli."""
-        result = _run(_agent(council=_council(_CouncilProvider(), _CouncilProvider())).run("merhaba"))
+        result = _run(
+            _agent(council=_council(_CouncilProvider(), _CouncilProvider())).run("merhaba")
+        )
 
         assert result.council is None
 
@@ -339,7 +353,7 @@ class TestAgentIntegration:
 
     def test_exploding_council_does_not_break_the_agent(self) -> None:
         class _RaisingCouncil:
-            async def deliberate(self, request, *, trigger=None):  # noqa: ANN001, ANN201
+            async def deliberate(self, request, *, trigger=None):
                 raise RuntimeError("council boom")
 
         agent = _agent(council=_RaisingCouncil(), gate=_open_gate())  # type: ignore[arg-type]
@@ -361,9 +375,9 @@ class TestAgentIntegration:
 
     def test_council_cannot_reach_the_agent_or_tool_layers(self) -> None:
         """Council → Agent → Council özyinelemesi yapısal olarak imkânsız."""
-        import app.council.stages as stages_module
         import app.council.gate as gate_module
         import app.council.models as models_module
+        import app.council.stages as stages_module
 
         for module in (stages_module, gate_module, models_module):
             source = inspect.getsource(module)
@@ -464,7 +478,7 @@ class TestChatIntegration:
 
     def test_council_never_produces_a_500(self, tmp_path: Path) -> None:
         class _RaisingCouncil:
-            async def deliberate(self, request, *, trigger=None):  # noqa: ANN001, ANN201
+            async def deliberate(self, request, *, trigger=None):
                 raise RuntimeError("council boom")
 
         chat = _ChatProvider("Jarvis: ayakta.")
@@ -500,7 +514,7 @@ class TestChatIntegration:
 
     def test_memory_persistence_still_works(self, tmp_path: Path) -> None:
         class _FakeMemoryLLM:
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return json.dumps(
                     {
                         "memories": [
@@ -514,7 +528,7 @@ class TestChatIntegration:
                     }
                 )
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError
 
         store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
@@ -566,9 +580,7 @@ class TestSystemWiring:
         assert providers == []
 
     def test_one_provider_per_model_is_created(self, tmp_path: Path) -> None:
-        settings = _settings(
-            tmp_path, council_enabled=True, council_models=["m-a", "m-b", "m-c"]
-        )
+        settings = _settings(tmp_path, council_enabled=True, council_models=["m-a", "m-b", "m-c"])
 
         service, providers = _build_council_service(settings)
 
@@ -628,10 +640,10 @@ class TestSystemWiring:
             def __init__(self, name: str) -> None:
                 self.name = name
 
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return "x"
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError
 
             async def aclose(self) -> None:
@@ -655,10 +667,10 @@ class TestSystemWiring:
             def __init__(self, name: str, *, fail: bool = False) -> None:
                 self.name, self.fail = name, fail
 
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return "x"
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError
 
             async def aclose(self) -> None:
@@ -667,9 +679,7 @@ class TestSystemWiring:
                 closed.append(self.name)
 
         app = create_app(settings=_settings(tmp_path), provider=_Closable("chat"))
-        app.state.council_providers.extend(
-            [_Closable("bad", fail=True), _Closable("council-2")]
-        )
+        app.state.council_providers.extend([_Closable("bad", fail=True), _Closable("council-2")])
 
         with TestClient(app):
             pass
@@ -685,10 +695,10 @@ class TestSystemWiring:
             def __init__(self, **kwargs: Any) -> None:
                 self.model = kwargs.get("model")
 
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return "x"
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError
 
             async def aclose(self) -> None:
@@ -698,9 +708,7 @@ class TestSystemWiring:
 
         monkeypatch.setattr(main_module, "OllamaProvider", _Recording)
         app = main_module.create_app(
-            settings=_settings(
-                tmp_path, council_enabled=True, council_models=["m-a", "m-b"]
-            )
+            settings=_settings(tmp_path, council_enabled=True, council_models=["m-a", "m-b"])
         )
 
         with TestClient(app):

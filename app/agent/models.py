@@ -194,9 +194,7 @@ class ActionOutcome(BaseModel):
     """
 
     @classmethod
-    def from_execution(
-        cls, result: Any, arguments: dict[str, Any]
-    ) -> "ActionOutcome":
+    def from_execution(cls, result: Any, arguments: dict[str, Any]) -> ActionOutcome:
         """Bir `ToolExecutionResult`'ı eylem sonucuna çevirir.
 
         Alan eşlemesi burada durur, runner'da değil: runner'ın işi eylemi

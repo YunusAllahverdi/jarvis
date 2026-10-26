@@ -25,7 +25,6 @@ from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.services.memory_retrieval import MemoryRetrievalService
 
-
 # ---------------------------------------------------------------------------
 # Fixture / yardımcılar
 # ---------------------------------------------------------------------------
@@ -66,7 +65,9 @@ class _FakeMemoryStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         raise AssertionError("MemoryRetrievalService list_active() çağırmamalı")
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         raise AssertionError("MemoryRetrievalService list_by_session() çağırmamalı")
 
     def search(
@@ -244,7 +245,9 @@ class TestInvalidatedMemoriesExcluded:
 
 
 class TestSessionIndependentRetrieval:
-    def test_matches_across_different_sessions_are_all_returned(self, store: SQLiteMemoryStore) -> None:
+    def test_matches_across_different_sessions_are_all_returned(
+        self, store: SQLiteMemoryStore
+    ) -> None:
         store.add(MemoryRecord(content="Ankara weather is nice.", source_session_id="sess-A"))
         store.add(MemoryRecord(content="Ankara traffic is bad.", source_session_id="sess-B"))
         store.add(MemoryRecord(content="Ankara has old architecture."))  # session yok

@@ -22,7 +22,8 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.insight import MAX_CONTENT_CHARS, router as insight_router
+from app.api.routes.insight import MAX_CONTENT_CHARS
+from app.api.routes.insight import router as insight_router
 from app.config.settings import Settings
 from app.memory.experience import Experience, ExperienceOutcome
 from app.memory.record import MemoryRecord, MemoryType
@@ -93,9 +94,7 @@ def _client(
     host: str = "127.0.0.1",
 ) -> TestClient:
     app = FastAPI()
-    app.state.settings = Settings(
-        app_name="T", app_version="t", environment="test", host=host
-    )
+    app.state.settings = Settings(app_name="T", app_version="t", environment="test", host=host)
     app.state.memory_store = memory_store
     app.state.experience_store = experience_store
     app.include_router(insight_router, prefix="/api")

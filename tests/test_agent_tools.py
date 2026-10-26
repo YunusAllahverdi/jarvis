@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.chat import ToolCall
 from app.learning.sqlite_trait_store import SQLiteUserTraitStore
 from app.learning.trait import TraitSource, TraitType, UserTrait
 from app.memory.record import MemoryRecord, MemoryType
@@ -32,7 +33,6 @@ from app.tools.builtin import context_tools as context_tools_module
 from app.tools.builtin.context_tools import MemorySearchTool, UserProfileTool
 from app.tools.defaults import build_default_tool_registry, register_context_tools
 from app.tools.executor import ToolExecutor
-from app.core.chat import ToolCall
 
 _NOW = datetime(2026, 8, 26, 20, 0, tzinfo=UTC)
 
@@ -196,9 +196,7 @@ class TestContractCompliance:
     ) -> None:
         """Çıktılar mevcut ToolExecutionResult.as_chat_message() ile taşınabilmeli."""
         registry = build_default_tool_registry()
-        register_context_tools(
-            registry, memory_retrieval=memory_retrieval, user_model=user_model
-        )
+        register_context_tools(registry, memory_retrieval=memory_retrieval, user_model=user_model)
         executor = ToolExecutor(registry, allowed_permissions={PermissionLevel.READ})
 
         for call in (

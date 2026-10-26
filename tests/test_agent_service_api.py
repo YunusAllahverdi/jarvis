@@ -109,9 +109,7 @@ def _build_agent(
             user_model=user_model,
         ),
         policy=RuleBasedDecisionPolicy(),
-        runner=AgentRunner(
-            tool_executor=ToolExecutor(registry, allowed_permissions=permissions)
-        ),
+        runner=AgentRunner(tool_executor=ToolExecutor(registry, allowed_permissions=permissions)),
     )
 
 
@@ -147,7 +145,7 @@ class TestAgentService:
         class _RaisingPolicy:
             name = "raising"
 
-            async def decide(self, context):  # noqa: ANN001, ANN201
+            async def decide(self, context):
                 raise RuntimeError("policy boom")
 
         service = _build_agent()
@@ -162,7 +160,7 @@ class TestAgentService:
 
     def test_context_failure_falls_back_instead_of_raising(self) -> None:
         class _RaisingBuilder:
-            def build(self, message, *, session_id=None, now=None):  # noqa: ANN001
+            def build(self, message, *, session_id=None, now=None):
                 raise RuntimeError("context boom")
 
         service = _build_agent()
@@ -173,7 +171,7 @@ class TestAgentService:
 
     def test_runner_failure_returns_structured_failure(self) -> None:
         class _RaisingRunner:
-            async def execute(self, decision):  # noqa: ANN001, ANN201
+            async def execute(self, decision):
                 raise RuntimeError("runner boom")
 
         service = _build_agent()
@@ -252,9 +250,7 @@ class TestAgentEndpoints:
 
     def test_run_endpoint_handles_a_multi_step_recall(self, agent_app) -> None:  # type: ignore[no-untyped-def]
         with TestClient(agent_app) as client:
-            response = client.post(
-                "/api/agent/run", json={"message": "hakkımda ne biliyorsun?"}
-            )
+            response = client.post("/api/agent/run", json={"message": "hakkımda ne biliyorsun?"})
 
         body = response.json()
         assert body["decision"]["intent"] == "recall"
@@ -302,9 +298,7 @@ class TestAgentEndpoints:
             assert client.post("/api/agent/run", json={"message": "   "}).status_code == 422
             assert client.post("/api/agent/run", json={}).status_code == 422
             assert (
-                client.post(
-                    "/api/agent/run", json={"message": "x", "session_id": "  "}
-                ).status_code
+                client.post("/api/agent/run", json={"message": "x", "session_id": "  "}).status_code
                 == 422
             )
 
@@ -427,9 +421,7 @@ class TestChatRemainsUnaffected:
         assert "._runner" not in source
         assert "._context_builder" not in source
 
-    def test_orchestrator_without_an_agent_behaves_exactly_as_before(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrator_without_an_agent_behaves_exactly_as_before(self, tmp_path: Path) -> None:
         """Agent verilmediğinde LLM'e giden mesaj yapısı değişmemeli."""
         provider = _FakeChatProvider()
         app = create_app(settings=_make_settings(tmp_path), provider=provider)
@@ -445,11 +437,13 @@ class TestChatRemainsUnaffected:
         """Agent'ın tool'ları LLM'in sohbette gördüğü yüzeye SIZMAMALI."""
         provider = _FakeChatProvider()
         app = create_app(
-            settings=_make_settings(tmp_path), provider=provider, agent_service=_build_agent(
+            settings=_make_settings(tmp_path),
+            provider=provider,
+            agent_service=_build_agent(
                 memory_retrieval=MemoryRetrievalService(
                     store=SQLiteMemoryStore(str(tmp_path / "memory.db"))
                 )
-            )
+            ),
         )
 
         with TestClient(app) as client:
@@ -461,13 +455,13 @@ class TestChatRemainsUnaffected:
 
     def test_chat_works_while_the_agent_is_broken(self, tmp_path: Path) -> None:
         class _BrokenAgent:
-            async def decide(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+            async def decide(self, *args, **kwargs):
                 raise RuntimeError("agent down")
 
-            async def run(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+            async def run(self, *args, **kwargs):
                 raise RuntimeError("agent down")
 
-            def build_context(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+            def build_context(self, *args, **kwargs):
                 raise RuntimeError("agent down")
 
         app = create_app(

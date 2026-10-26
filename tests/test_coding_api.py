@@ -143,9 +143,7 @@ def test_loop_is_not_built_by_default(tmp_path: Path) -> None:
 def test_enabling_the_flag_alone_is_not_enough(tmp_path: Path) -> None:
     """Döngü en yetkili yoldur; tek bir anahtarla açılmamalıdır."""
     assert _build(tmp_path, coding_loop_enabled=True) is None
-    assert (
-        _build(tmp_path, coding_loop_enabled=True, workspace_root=str(tmp_path)) is None
-    )
+    assert _build(tmp_path, coding_loop_enabled=True, workspace_root=str(tmp_path)) is None
     assert (
         _build(
             tmp_path,
@@ -187,7 +185,7 @@ def test_loop_reuses_the_agents_execution_boundary(tmp_path: Path) -> None:
     )
 
     assert service is not None
-    assert service._loop._tool_executor is executor  # noqa: SLF001
+    assert service._loop._tool_executor is executor
 
 
 def test_verification_candidates_are_filtered_by_the_command_policy() -> None:

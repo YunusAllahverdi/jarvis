@@ -31,10 +31,10 @@ from app.learning.trait import UserTrait
 from app.memory.experience import Experience
 from app.memory.experience_store import ExperienceStore
 from app.memory.record import MemoryRecord
+from app.security.permissions import PermissionDecision, ToolPermissionPolicy
 from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
-from app.security.permissions import PermissionDecision, ToolPermissionPolicy
 from app.tools.base import PermissionLevel
 from app.tools.registry import ToolRegistry
 
@@ -145,9 +145,7 @@ class ContextBuilder:
         """
         self._tool_registry = tool_registry
         if policy is not None and allowed_permissions is not None:
-            raise ValueError(
-                "allowed_permissions ve policy birlikte verilemez; birini seçin."
-            )
+            raise ValueError("allowed_permissions ve policy birlikte verilemez; birini seçin.")
         self._policy = (
             policy
             if policy is not None
@@ -198,7 +196,7 @@ class ContextBuilder:
             return []
         try:
             conversation = self._conversation_store.get_or_create(session_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_context_conversation_failed", extra={"session_id": session_id})
             degraded.append(SOURCE_CONVERSATION)
             return []
@@ -213,7 +211,7 @@ class ContextBuilder:
             return []
         try:
             return self._memory_retrieval.retrieve(user_message, limit=limit)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_context_memory_failed")
             degraded.append(SOURCE_MEMORY)
             return []
@@ -233,7 +231,7 @@ class ContextBuilder:
                 if scoped:
                     return scoped
             return self._experience_store.list_recent(limit=limit)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_context_experience_failed", extra={"session_id": session_id})
             degraded.append(SOURCE_EXPERIENCE)
             return []
@@ -250,7 +248,7 @@ class ContextBuilder:
                 min_confidence=self._budget.min_trait_confidence,
                 limit=limit,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_context_user_model_failed")
             degraded.append(SOURCE_USER_MODEL)
             return []
@@ -263,7 +261,7 @@ class ContextBuilder:
         """
         try:
             tools = self._tool_registry.list_tools()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("agent_context_tool_registry_failed")
             return []
         return [

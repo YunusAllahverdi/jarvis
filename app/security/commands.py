@@ -19,9 +19,7 @@ from collections.abc import Iterable, Sequence
 MAX_COMMAND_LENGTH = 2000
 MAX_ARGUMENT_COUNT = 60
 
-SHELL_CONTROL_TOKENS: frozenset[str] = frozenset(
-    {";", "&", "&&", "|", "||", ">", ">>", "<", "<<"}
-)
+SHELL_CONTROL_TOKENS: frozenset[str] = frozenset({";", "&", "&&", "|", "||", ">", ">>", "<", "<<"})
 """Bir kabukta komut zincirlemeye yarayan, tek başına duran jetonlar.
 
 Denetim ayrıştırmadan SONRA yapılır, ham metin üzerinde değil. Sebebi şu:

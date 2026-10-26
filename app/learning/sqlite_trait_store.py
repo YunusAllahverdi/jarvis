@@ -291,9 +291,7 @@ class SQLiteUserTraitStore:
     def get(self, trait_id: str) -> UserTrait | None:
         """Kimliğe göre tek bir trait döndürür (geçersizler dahil)."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM user_traits WHERE id = ?", (trait_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM user_traits WHERE id = ?", (trait_id,)).fetchone()
         return _row_to_trait(row) if row else None
 
     def find_active(self, trait_type: TraitType, key: str) -> UserTrait | None:

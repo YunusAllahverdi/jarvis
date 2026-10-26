@@ -85,7 +85,7 @@ def _first_error_line(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for line in lines:
         # pytest hata satırlarını "E   " ile önekler.
-        if line.startswith("E ") or line.startswith("E\t"):
+        if line.startswith(("E ", "E\t")):
             return line[1:].strip()
         for marker in (*_SYNTAX_MARKERS, *_IMPORT_MARKERS, *_TYPE_MARKERS):
             if marker in line:

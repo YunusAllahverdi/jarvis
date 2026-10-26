@@ -241,9 +241,7 @@ async def _rebuild_council(request: Request) -> None:
     store = _council_store(request)
     settings = request.app.state.settings
 
-    members, chairman, providers = store.build_members(
-        max_members=settings.council_max_members
-    )
+    members, chairman, providers = store.build_members(max_members=settings.council_max_members)
 
     if chairman is None or len(members) < settings.council_min_candidates:
         agent.set_council(None, None)
@@ -275,16 +273,14 @@ async def _rebuild_council(request: Request) -> None:
             continue
         try:
             await closer()
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("council_provider_close_failed")
 
     request.app.state.council_service = service
     request.app.state.council_providers = providers if service is not None else []
 
 
-@router.get(
-    "/admin/council", response_model=CouncilMembersResponse, status_code=status.HTTP_200_OK
-)
+@router.get("/admin/council", response_model=CouncilMembersResponse, status_code=status.HTTP_200_OK)
 async def read_council_members(request: Request) -> CouncilMembersResponse:
     """Tanımlı Council üyelerini döndürür (anahtarlar hariç)."""
 

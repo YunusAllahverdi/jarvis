@@ -38,7 +38,6 @@ from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 
-
 # ---------------------------------------------------------------------------
 # Yardımcılar
 # ---------------------------------------------------------------------------
@@ -118,7 +117,9 @@ class _AlwaysToolCallingProvider:
         tools: Sequence[ToolDefinition],
     ) -> LLMResponse:
         self.calls.append(list(messages))
-        return LLMResponse(tool_calls=[ToolCall(name="calculator", arguments={"expression": "1 + 1"})])
+        return LLMResponse(
+            tool_calls=[ToolCall(name="calculator", arguments={"expression": "1 + 1"})]
+        )
 
 
 class _ImmediatelyFailingProvider:

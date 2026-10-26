@@ -13,6 +13,7 @@ motoruna düşer ve kullanıcı için hiçbir şey bozulmaz.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -87,7 +88,7 @@ async def text_to_speech(body: TTSRequest, request: Request) -> StreamingRespons
             detail={"code": "speech_failed", "message": str(exc)},
         ) from exc
 
-    async def body_stream():
+    async def body_stream() -> AsyncIterator[bytes]:
         yield first
         async for chunk in iterator:
             yield chunk
@@ -112,6 +113,4 @@ async def list_voices(request: Request) -> VoiceListResponse:
             detail={"code": "speech_failed", "message": str(exc)},
         ) from exc
 
-    return VoiceListResponse(
-        voices=[VoiceView(**v) for v in voices], current=service.voice_id
-    )
+    return VoiceListResponse(voices=[VoiceView(**v) for v in voices], current=service.voice_id)

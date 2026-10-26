@@ -93,20 +93,17 @@ class NetworkGuard:
             if _is_private(address):
                 # Adres üzerinden bakılır: bir ad özel bir adrese çözülüyorsa
                 # adın kendisi masum görünse de erişim reddedilir.
-                raise UrlNotAllowedError(
-                    "Adres özel veya yerel bir ağa çözülüyor; getirilemez."
-                )
+                raise UrlNotAllowedError("Adres özel veya yerel bir ağa çözülüyor; getirilemez.")
 
         return candidate
 
     def _domain_allowed(self, hostname: str) -> bool:
         host = hostname.lower().rstrip(".")
         return any(
-            host == domain or host.endswith(f".{domain}")
-            for domain in self._allowed_domains
+            host == domain or host.endswith(f".{domain}") for domain in self._allowed_domains
         )
 
-    def _resolve(self, hostname: str) -> list[ipaddress._BaseAddress]:
+    def _resolve(self, hostname: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
         """Adı IP adreslerine çözer.
 
         Çözümleme başarısızsa BOŞ liste döner ve URL reddedilmez: var olmayan
@@ -119,7 +116,7 @@ class NetworkGuard:
             logger.debug("network_guard_resolve_failed", extra={"hostname": hostname[:64]})
             return []
 
-        addresses: list[ipaddress._BaseAddress] = []
+        addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
         for info in infos:
             raw = info[4][0]
             try:
@@ -129,7 +126,7 @@ class NetworkGuard:
         return addresses
 
 
-def _is_private(address: ipaddress._BaseAddress) -> bool:
+def _is_private(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Adres, dışarıya çıkmayan bir aralıkta mı?
 
     Tek tek sayılması bilinçlidir: `is_private` tek başına bağlantı-yerel

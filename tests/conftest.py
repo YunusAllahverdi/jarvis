@@ -35,9 +35,7 @@ def _isolate_settings_from_the_developer_environment() -> Iterator[None]:
     """`.env` ve `JARVIS_*` değişkenlerini test oturumu boyunca devre dışı bırakır."""
 
     original_env_file = Settings.model_config.get("env_file")
-    removed = {
-        key: value for key, value in os.environ.items() if key.startswith("JARVIS_")
-    }
+    removed = {key: value for key, value in os.environ.items() if key.startswith("JARVIS_")}
 
     Settings.model_config["env_file"] = None
     for key in removed:

@@ -107,9 +107,7 @@ def test_note_limit_raises_instead_of_dropping_the_oldest(tmp_path: Path) -> Non
 def test_agent_written_notes_are_marked(tmp_path: Path) -> None:
     """Kullanıcı kendi yazdığıyla ajanınkini ayırt edebilmelidir."""
     store = _store(tmp_path)
-    _run(NoteWriteTool(store=store).execute(
-        NoteWriteTool.input_model(content="ajan notu")
-    ))
+    _run(NoteWriteTool(store=store).execute(NoteWriteTool.input_model(content="ajan notu")))
 
     assert store.list()[0].created_by == "agent"
 
@@ -153,9 +151,7 @@ def test_search_tool_returns_notes(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.add(title="Plan", content="jarvis bitirilecek")
 
-    result = _run(NoteSearchTool(store=store).execute(
-        NoteSearchTool.input_model(query="jarvis")
-    ))
+    result = _run(NoteSearchTool(store=store).execute(NoteSearchTool.input_model(query="jarvis")))
 
     assert result["count"] == 1
     assert result["notes"][0]["title"] == "Plan"

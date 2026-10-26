@@ -93,6 +93,7 @@ _TOOL = ToolDefinition(
 # 1-3. Uç nokta, kimlik başlıkları ve zorunlu alanlar
 # ---------------------------------------------------------------------------
 
+
 def test_request_goes_to_messages_endpoint() -> None:
     """Uç nokta `/v1/messages` olmalı; `/chat/completions` değil."""
     seen, handler = _capture()
@@ -134,6 +135,7 @@ def test_model_and_messages_are_sent() -> None:
 # ---------------------------------------------------------------------------
 # 4-5. System mesajının taşınması
 # ---------------------------------------------------------------------------
+
 
 def test_system_message_is_hoisted_out_of_the_list() -> None:
     """System mesajı listede KALMAMALI, üst düzey `system` alanına gitmeli."""
@@ -182,6 +184,7 @@ def test_system_field_is_absent_when_no_system_message() -> None:
 # ---------------------------------------------------------------------------
 # 6-8. Araç sözleşmesi
 # ---------------------------------------------------------------------------
+
 
 def test_tool_definition_has_no_function_wrapper() -> None:
     """Araç şeması düzdür: `input_schema`, OpenAI'deki sarmalayıcı yok."""
@@ -248,9 +251,7 @@ def test_tool_result_is_a_user_block_bound_by_tool_use_id() -> None:
                 ChatMessage(role="user", content="hava nasıl"),
                 ChatMessage(
                     role="assistant",
-                    tool_calls=[
-                        ToolCall(name="hava_durumu", arguments={}, call_id="toolu_1")
-                    ],
+                    tool_calls=[ToolCall(name="hava_durumu", arguments={}, call_id="toolu_1")],
                 ),
                 ChatMessage(role="tool", tool_name="toolu_1", content="15 derece"),
             ]
@@ -259,9 +260,7 @@ def test_tool_result_is_a_user_block_bound_by_tool_use_id() -> None:
     result = _body(seen[0])["messages"][2]
     assert result == {
         "role": "user",
-        "content": [
-            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "15 derece"}
-        ],
+        "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "15 derece"}],
     }
 
 
@@ -275,9 +274,7 @@ def test_assistant_text_precedes_its_tool_use_block() -> None:
                 ChatMessage(
                     role="assistant",
                     content="Bakıyorum.",
-                    tool_calls=[
-                        ToolCall(name="hava_durumu", arguments={}, call_id="toolu_1")
-                    ],
+                    tool_calls=[ToolCall(name="hava_durumu", arguments={}, call_id="toolu_1")],
                 ),
                 ChatMessage(role="tool", tool_name="toolu_1", content="15 derece"),
             ]
@@ -291,6 +288,7 @@ def test_assistant_text_precedes_its_tool_use_block() -> None:
 # ---------------------------------------------------------------------------
 # 9-11. Yanıt çözümleme
 # ---------------------------------------------------------------------------
+
 
 def test_text_reply_is_parsed() -> None:
     """Düz metin bloğu çözülmeli."""
@@ -350,9 +348,7 @@ def test_generate_rejects_an_unexpected_tool_call() -> None:
     reply = httpx.Response(
         200,
         json={
-            "content": [
-                {"type": "tool_use", "id": "toolu_9", "name": "hava_durumu", "input": {}}
-            ]
+            "content": [{"type": "tool_use", "id": "toolu_9", "name": "hava_durumu", "input": {}}]
         },
     )
     with pytest.raises(LLMResponseError):
@@ -362,6 +358,7 @@ def test_generate_rejects_an_unexpected_tool_call() -> None:
 # ---------------------------------------------------------------------------
 # 12-17. Hata yolları
 # ---------------------------------------------------------------------------
+
 
 def test_missing_model_is_reported_clearly() -> None:
     """Model yapılandırılmamışsa kullanıcı ne yapacağını bilmeli."""

@@ -61,9 +61,7 @@ class ToolPermissionPolicy:
         overlap = allowed_set & approval_set
         if overlap:
             names = ", ".join(sorted(str(level) for level in overlap))
-            raise ValueError(
-                f"Bir izin seviyesi hem serbest hem onaylı olamaz: {names}"
-            )
+            raise ValueError(f"Bir izin seviyesi hem serbest hem onaylı olamaz: {names}")
 
         self._allowed = allowed_set
         self._requires_approval = approval_set

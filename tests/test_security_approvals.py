@@ -86,6 +86,7 @@ def _service(**kwargs: Any) -> tuple[ApprovalService, _Clock]:
 # 1-2. İstek açma ve teslim
 # ---------------------------------------------------------------------------
 
+
 def test_request_freezes_the_call() -> None:
     """Açılan istek, çağrının adını ve argümanlarını saklamalı."""
     service, _ = _service()
@@ -120,6 +121,7 @@ def test_approve_returns_the_stored_call() -> None:
 # 3-6. Tek kullanımlık olma ve geçersiz durumlar
 # ---------------------------------------------------------------------------
 
+
 def test_approval_is_single_use() -> None:
     """Aynı onay ikinci kez kullanılamamalı — tekrar saldırısına kapalı."""
     service, _ = _service()
@@ -137,9 +139,7 @@ def test_approval_is_single_use() -> None:
 def test_rejected_request_cannot_be_approved_later() -> None:
     """Reddedilen istek sonradan onaylanamamalı."""
     service, _ = _service()
-    record = service.request(
-        ToolCall(name="yazici"), permission=PermissionLevel.WRITE
-    )
+    record = service.request(ToolCall(name="yazici"), permission=PermissionLevel.WRITE)
 
     service.reject(record.approval_id)
 
@@ -150,9 +150,7 @@ def test_rejected_request_cannot_be_approved_later() -> None:
 def test_request_expires_and_cannot_be_approved() -> None:
     """Süre dolduğunda istek düşmeli; eski öneri yeni durumda çalıştırılmamalı."""
     service, clock = _service(ttl_seconds=60)
-    record = service.request(
-        ToolCall(name="yazici"), permission=PermissionLevel.WRITE
-    )
+    record = service.request(ToolCall(name="yazici"), permission=PermissionLevel.WRITE)
 
     clock.advance(61)
 
@@ -173,6 +171,7 @@ def test_unknown_approval_id_is_not_found() -> None:
 # 7-8. Sınırlar ve süzme
 # ---------------------------------------------------------------------------
 
+
 def test_pending_requests_are_capped() -> None:
     """Yanıtlanmayan istekler belleği doldurmamalı."""
     service, _ = _service(max_pending=2)
@@ -186,12 +185,8 @@ def test_pending_requests_are_capped() -> None:
 def test_pending_filters_by_session() -> None:
     """Bir oturum başka oturumun bekleyen isteklerini görmemeli."""
     service, _ = _service()
-    service.request(
-        ToolCall(name="yazici"), permission=PermissionLevel.WRITE, session_id="s1"
-    )
-    service.request(
-        ToolCall(name="yazici"), permission=PermissionLevel.WRITE, session_id="s2"
-    )
+    service.request(ToolCall(name="yazici"), permission=PermissionLevel.WRITE, session_id="s1")
+    service.request(ToolCall(name="yazici"), permission=PermissionLevel.WRITE, session_id="s2")
 
     assert len(service.pending(session_id="s1")) == 1
     assert len(service.pending()) == 2
@@ -200,6 +195,7 @@ def test_pending_filters_by_session() -> None:
 # ---------------------------------------------------------------------------
 # 9-12. Executor ile birlikte: onayın sınırları
 # ---------------------------------------------------------------------------
+
 
 def _executor_with(tool: Tool, policy: ToolPermissionPolicy) -> ToolExecutor:
     registry = ToolRegistry()
@@ -213,9 +209,7 @@ def test_approval_does_not_change_session_policy() -> None:
     policy = ToolPermissionPolicy(
         allowed={PermissionLevel.READ}, requires_approval={PermissionLevel.WRITE}
     )
-    record = service.request(
-        ToolCall(name="yazici"), permission=PermissionLevel.WRITE
-    )
+    record = service.request(ToolCall(name="yazici"), permission=PermissionLevel.WRITE)
     service.approve(record.approval_id)
 
     assert policy.decide(PermissionLevel.WRITE) is PermissionDecision.REQUIRE_APPROVAL

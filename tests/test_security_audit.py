@@ -86,6 +86,7 @@ def _executor(
 # 1-3. Her sonuç kaydedilir
 # ---------------------------------------------------------------------------
 
+
 def test_successful_call_is_recorded_with_duration() -> None:
     """Başarılı çağrı, süresiyle birlikte kaydedilmeli."""
     executor, log = _executor()
@@ -133,14 +134,13 @@ def test_pending_approval_is_recorded() -> None:
 # 4-5. Maskeleme
 # ---------------------------------------------------------------------------
 
+
 def test_arguments_are_masked_in_the_record() -> None:
     """Gizli argüman denetim kaydına düz metin girmemeli."""
     executor, log = _executor()
 
     _run(
-        executor.execute(
-            ToolCall(name="arac", arguments={"path": "a.txt", "password": "hunter2"})
-        )
+        executor.execute(ToolCall(name="arac", arguments={"path": "a.txt", "password": "hunter2"}))
     )
 
     (event,) = log.recent()
@@ -162,6 +162,7 @@ def test_masking_happens_on_the_model_itself() -> None:
 # ---------------------------------------------------------------------------
 # 6-8. Depolar
 # ---------------------------------------------------------------------------
+
 
 def test_in_memory_log_is_bounded() -> None:
     """Kapasite dolunca en eski olay düşmeli."""
@@ -218,6 +219,7 @@ def test_sqlite_log_survives_a_new_connection(tmp_path: Path) -> None:
 # 9. Dayanıklılık
 # ---------------------------------------------------------------------------
 
+
 class _BrokenLog:
     def record(self, event: AuditEvent) -> None:
         raise RuntimeError("disk dolu")
@@ -247,6 +249,7 @@ def test_safe_record_tolerates_no_log() -> None:
 # ---------------------------------------------------------------------------
 # 10-11. Uygulama ve onay entegrasyonu
 # ---------------------------------------------------------------------------
+
 
 def test_audit_shares_the_one_database_file(tmp_path: Path) -> None:
     """Denetim kaydı ayrı bir dosya açmamalı; tek veri dosyası korunmalı."""

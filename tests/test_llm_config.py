@@ -67,6 +67,7 @@ class _FakeProvider:
 # 1-5. Yapılandırma deposu
 # ---------------------------------------------------------------------------
 
+
 def test_default_config_when_nothing_saved(store: LLMConfigStore) -> None:
     """Hiç kaydedilmemişken makul bir varsayılan dönmeli."""
     config = store.get()
@@ -148,11 +149,10 @@ def test_the_key_can_be_cleared_explicitly(store: LLMConfigStore) -> None:
 # 6-7. Sağlayıcı kurulumu
 # ---------------------------------------------------------------------------
 
+
 def test_the_right_provider_type_is_built(store: LLMConfigStore) -> None:
     """Seçilen türe göre doğru sınıf kurulmalı."""
-    store.update(
-        kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="gemma3"
-    )
+    store.update(kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="gemma3")
     assert isinstance(store.build_provider(), OllamaProvider)
 
     store.update(
@@ -180,6 +180,7 @@ def test_the_key_reaches_the_provider(store: LLMConfigStore) -> None:
 # ---------------------------------------------------------------------------
 # 8-11. Değiştirilebilir sarmalayıcı
 # ---------------------------------------------------------------------------
+
 
 def test_calls_reach_the_delegate() -> None:
     """Sarmalayıcı çağrıları altındaki sağlayıcıya iletmeli."""
@@ -245,9 +246,7 @@ def test_unknown_provider_kind_falls_back_instead_of_crashing(tmp_path: Path) ->
 
     db = str(tmp_path / "jarvis.db")
     store = LLMConfigStore(db)
-    store.update(
-        kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m"
-    )
+    store.update(kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m")
 
     # Başka bir sürümün yazdığı, burada tanınmayan bir tür.
     with sqlite3.connect(db) as conn:
@@ -302,9 +301,7 @@ def test_unknown_kind_still_builds_a_usable_provider(tmp_path: Path) -> None:
 
     db = str(tmp_path / "jarvis.db")
     store = LLMConfigStore(db)
-    store.update(
-        kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m"
-    )
+    store.update(kind=LLMProviderKind.OLLAMA, base_url="http://127.0.0.1:11434", model="m")
     with sqlite3.connect(db) as conn:
         conn.execute("UPDATE llm_config SET kind = 'bilinmeyen-servis' WHERE id = 1")
 

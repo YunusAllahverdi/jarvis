@@ -35,7 +35,6 @@ from app.agent.runner import AgentRunner
 from app.config.settings import Settings
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.main import create_app
-from app.memory.experience import Experience
 from app.memory.extractor import MemoryExtractor
 from app.memory.record import MemoryRecord, MemoryType
 from app.memory.sqlite_experience_store import SQLiteExperienceStore
@@ -122,9 +121,7 @@ def _agent(
             memory_retrieval=memory_retrieval,
         ),
         policy=policy or RuleBasedDecisionPolicy(),
-        runner=AgentRunner(
-            tool_executor=ToolExecutor(registry, allowed_permissions=permissions)
-        ),
+        runner=AgentRunner(tool_executor=ToolExecutor(registry, allowed_permissions=permissions)),
     )
 
 
@@ -149,9 +146,7 @@ class TestNoInjectionCases:
 
     def test_conversation_decision_injects_nothing(self, tmp_path: Path) -> None:
         provider = _RecordingProvider()
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=_agent()
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=_agent())
 
         with TestClient(app) as client:
             response = client.post("/api/chat", json={"message": "bana bir şiir yaz"})
@@ -165,7 +160,7 @@ class TestNoInjectionCases:
         class _AlwaysCalculatorPolicy:
             name = "test"
 
-            async def decide(self, context):  # noqa: ANN001, ANN201
+            async def decide(self, context):
                 from app.agent.models import AgentAction, AgentDecision, Intent
 
                 return AgentDecision(
@@ -215,9 +210,7 @@ class TestNoInjectionCases:
 class TestSuccessfulInjection:
     def test_tool_result_is_injected_as_data(self, tmp_path: Path) -> None:
         provider = _RecordingProvider()
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=_agent()
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=_agent())
 
         with TestClient(app) as client:
             response = client.post("/api/chat", json={"message": "25 * 17 kaç eder?"})
@@ -246,9 +239,7 @@ class TestSuccessfulInjection:
 
     def test_injection_defence_is_preserved_in_the_block(self, tmp_path: Path) -> None:
         provider = _RecordingProvider()
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=_agent()
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=_agent())
 
         with TestClient(app) as client:
             client.post("/api/chat", json={"message": "saat kaç?"})
@@ -286,7 +277,7 @@ class TestSuccessfulInjection:
 class TestAgentFailureIsolation:
     def test_raising_agent_does_not_break_chat(self, tmp_path: Path) -> None:
         class _RaisingAgent:
-            async def run(self, message, *, session_id=None):  # noqa: ANN001, ANN201
+            async def run(self, message, *, session_id=None):
                 raise RuntimeError("agent boom")
 
         app = create_app(
@@ -303,7 +294,7 @@ class TestAgentFailureIsolation:
 
     def test_agent_failure_does_not_inject_anything(self, tmp_path: Path) -> None:
         class _RaisingAgent:
-            async def run(self, message, *, session_id=None):  # noqa: ANN001, ANN201
+            async def run(self, message, *, session_id=None):
                 raise RuntimeError("agent boom")
 
         provider = _RecordingProvider()
@@ -321,9 +312,7 @@ class TestAgentFailureIsolation:
     def test_chat_still_makes_exactly_one_provider_call(self, tmp_path: Path) -> None:
         """Agent (kural tabanlı) sohbet sağlayıcısını fazladan çağırmamalı."""
         provider = _RecordingProvider()
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=_agent()
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=_agent())
 
         with TestClient(app) as client:
             client.post("/api/chat", json={"message": "25 * 17 kaç eder?"})
@@ -355,7 +344,7 @@ class TestPersistenceUnaffected:
 
     def test_memory_persistence_still_works_with_the_agent(self, tmp_path: Path) -> None:
         class _FakeMemoryLLM:
-            async def generate(self, messages):  # noqa: ANN001, ANN201
+            async def generate(self, messages):
                 return json.dumps(
                     {
                         "memories": [
@@ -369,7 +358,7 @@ class TestPersistenceUnaffected:
                     }
                 )
 
-            async def generate_with_tools(self, messages, tools):  # noqa: ANN001, ANN201
+            async def generate_with_tools(self, messages, tools):
                 raise AssertionError("kullanılmamalı")
 
         store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
@@ -448,9 +437,7 @@ class TestSettingsAndEndToEnd:
             reply="Sonuç 42.",
         )
         agent = _agent(policy=LLMDecisionPolicy(provider=provider, model_label="test-model"))
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=agent
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=agent)
 
         with TestClient(app) as client:
             body = client.post("/api/chat", json={"message": "6 çarpı 7?"}).json()
@@ -467,9 +454,7 @@ class TestSettingsAndEndToEnd:
             reply="Merhaba!",
         )
         agent = _agent(policy=LLMDecisionPolicy(provider=provider))
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=agent
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=agent)
 
         with TestClient(app) as client:
             body = client.post("/api/chat", json={"message": "selam"}).json()
@@ -483,9 +468,7 @@ class TestSettingsAndEndToEnd:
         agent = _agent(
             policy=LLMDecisionPolicy(provider=provider, fallback=RuleBasedDecisionPolicy())
         )
-        app = create_app(
-            settings=_settings(tmp_path), provider=provider, agent_service=agent
-        )
+        app = create_app(settings=_settings(tmp_path), provider=provider, agent_service=agent)
 
         with TestClient(app) as client:
             response = client.post("/api/chat", json={"message": "25 * 17 kaç eder?"})

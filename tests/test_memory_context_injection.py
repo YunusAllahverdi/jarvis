@@ -36,7 +36,6 @@ from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 
-
 # ---------------------------------------------------------------------------
 # Yardımcılar
 # ---------------------------------------------------------------------------
@@ -366,7 +365,9 @@ class TestContextMessageLimitStillWorks:
 
     def test_context_limit_zero_still_means_no_limit_with_memory_enabled(self) -> None:
         retrieval = _FakeMemoryRetrieval(records=[])
-        orchestrator, provider = _make_orchestrator(memory_retrieval=retrieval, context_message_limit=0)
+        orchestrator, provider = _make_orchestrator(
+            memory_retrieval=retrieval, context_message_limit=0
+        )
 
         session_id = None
         for i in range(5):
@@ -451,4 +452,4 @@ class TestFormattingHelpersAreDeterministic:
         escaped = _escape_memory_content("<script>alert(1)</script>")
         assert "<" not in escaped
         assert ">" not in escaped
-        assert "‹script›alert(1)‹/script›" == escaped
+        assert escaped == "‹script›alert(1)‹/script›"

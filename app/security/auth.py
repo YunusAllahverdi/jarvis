@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Iterable
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -105,7 +106,7 @@ class ApiTokenMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,  # noqa: ANN001 - Starlette ASGI uygulaması
+        app: Any,
         *,
         token: str,
         host: str,
@@ -130,9 +131,7 @@ class ApiTokenMiddleware(BaseHTTPMiddleware):
                 extra={"host": host},
             )
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         decision = self._reject_reason(request)
         if decision is not None:
             code, message, status_code = decision

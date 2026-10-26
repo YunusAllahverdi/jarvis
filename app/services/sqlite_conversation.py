@@ -186,6 +186,6 @@ def _row_to_message(row: sqlite3.Row) -> ChatMessage | None:
             tool_name=row["tool_name"],
             tool_calls=tool_calls,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("conversation_row_skipped", extra={"role": row["role"]})
         return None

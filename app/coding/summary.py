@@ -20,15 +20,9 @@ from app.coding.models import CodingResult, CodingStatus, Iteration
 
 _STATUS_HEADLINE: dict[CodingStatus, str] = {
     CodingStatus.COMPLETED: "Değişiklik uygulandı ve doğrulama geçti.",
-    CodingStatus.APPLIED_UNVERIFIED: (
-        "Değişiklik uygulandı, ancak doğrulama çalıştırılamadı."
-    ),
-    CodingStatus.VERIFICATION_FAILED: (
-        "Değişiklik uygulandı, ancak doğrulama hâlâ başarısız."
-    ),
-    CodingStatus.PENDING_APPROVAL: (
-        "Bir adım kullanıcı onayı bekliyor; döngü durduruldu."
-    ),
+    CodingStatus.APPLIED_UNVERIFIED: ("Değişiklik uygulandı, ancak doğrulama çalıştırılamadı."),
+    CodingStatus.VERIFICATION_FAILED: ("Değişiklik uygulandı, ancak doğrulama hâlâ başarısız."),
+    CodingStatus.PENDING_APPROVAL: ("Bir adım kullanıcı onayı bekliyor; döngü durduruldu."),
     CodingStatus.NO_PLAN: "Uygulanabilir bir plan üretilemedi.",
     CodingStatus.FAILED: "Kodlama döngüsü ilerleyemedi.",
 }
@@ -64,9 +58,7 @@ def build_summary(result: CodingResult) -> str:
     lines.extend(_review_lines(result))
 
     if result.pending_approval_ids:
-        lines.append(
-            f"Onay bekleyen istek sayısı: {len(result.pending_approval_ids)}."
-        )
+        lines.append(f"Onay bekleyen istek sayısı: {len(result.pending_approval_ids)}.")
     if result.error:
         lines.append(f"Hata: {result.error}")
 
@@ -117,9 +109,7 @@ def _review_lines(result: CodingResult) -> list[str]:
         reason = getattr(review, "skipped_reason", None)
         return [f"Kod incelemesi yapılmadı: {reason or 'sebep bilinmiyor'}"]
 
-    lines = [
-        f"Kod incelemesi: {getattr(review, 'reviewer_count', 0)} inceleyici."
-    ]
+    lines = [f"Kod incelemesi: {getattr(review, 'reviewer_count', 0)} inceleyici."]
     if getattr(review, "diff_truncated", False):
         lines.append("  Uyarı: diff kırpıldı, inceleme değişikliğin tamamını görmedi.")
     findings = str(getattr(review, "findings", "") or "").strip()
@@ -155,7 +145,11 @@ def _verification_lines(result: CodingResult) -> list[str]:
 
     lines.append(
         "Doğrulama sonucu: başarısız"
-        + (" (zaman aşımı)." if verification.timed_out else f" (çıkış kodu {verification.exit_code}).")
+        + (
+            " (zaman aşımı)."
+            if verification.timed_out
+            else f" (çıkış kodu {verification.exit_code})."
+        )
     )
     diagnosis = verification.diagnosis
     if diagnosis is not None:

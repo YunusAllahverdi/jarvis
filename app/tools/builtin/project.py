@@ -214,9 +214,7 @@ def _entry_points(root: Path, files: list[Path]) -> list[str]:
     """Bilinen giriş noktası adlarını köke göreli olarak listeler."""
 
     return sorted(
-        path.relative_to(root).as_posix()
-        for path in files
-        if path.name in ENTRY_POINT_NAMES
+        path.relative_to(root).as_posix() for path in files if path.name in ENTRY_POINT_NAMES
     )[:MAX_TREE_ENTRIES]
 
 

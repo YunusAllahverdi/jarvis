@@ -22,10 +22,10 @@ from __future__ import annotations
 import pytest
 
 from app.security.commands import (
-    CommandNotAllowedError,
-    CommandPolicy,
     MAX_ARGUMENT_COUNT,
     MAX_COMMAND_LENGTH,
+    CommandNotAllowedError,
+    CommandPolicy,
 )
 
 
@@ -37,6 +37,7 @@ def policy() -> CommandPolicy:
 # ---------------------------------------------------------------------------
 # 1-2. Kabul edilen komutlar
 # ---------------------------------------------------------------------------
+
 
 def test_allowed_command_becomes_an_argument_list(policy: CommandPolicy) -> None:
     """Tanınan komut, kabuk olmadan çalıştırılabilecek listeye çevrilmeli."""
@@ -53,6 +54,7 @@ def test_quoted_arguments_are_preserved(policy: CommandPolicy) -> None:
 # ---------------------------------------------------------------------------
 # 3-5. Biçim reddi
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("command", ["", "   ", "\t"])
 def test_empty_command_is_refused(policy: CommandPolicy, command: str) -> None:
@@ -114,6 +116,7 @@ def test_unparseable_command_is_refused(policy: CommandPolicy) -> None:
 # 6-9. Program tanıma
 # ---------------------------------------------------------------------------
 
+
 def test_unknown_program_is_refused(policy: CommandPolicy) -> None:
     """Listede olmayan program çalıştırılmamalı."""
     with pytest.raises(CommandNotAllowedError):
@@ -122,7 +125,7 @@ def test_unknown_program_is_refused(policy: CommandPolicy) -> None:
 
 def test_path_prefix_is_stripped(policy: CommandPolicy) -> None:
     """Tam yolla çağrılan tanınan program kabul edilmeli."""
-    assert list(policy.parse("/usr/bin/python --version"))[0] == "python"
+    assert next(iter(policy.parse("/usr/bin/python --version"))) == "python"
 
 
 def test_a_local_program_cannot_impersonate_an_allowed_name(policy: CommandPolicy) -> None:
@@ -138,9 +141,7 @@ def test_a_local_program_cannot_impersonate_an_allowed_name(policy: CommandPolic
 
 
 @pytest.mark.parametrize("command", ["PYTHON --version", "Python.exe --version"])
-def test_case_and_extension_do_not_bypass_the_rule(
-    policy: CommandPolicy, command: str
-) -> None:
+def test_case_and_extension_do_not_bypass_the_rule(policy: CommandPolicy, command: str) -> None:
     """Büyük harf ya da .exe yazmak tanımayı değiştirmemeli."""
     assert policy.parse(command)[0] == "python"
 
@@ -148,6 +149,7 @@ def test_case_and_extension_do_not_bypass_the_rule(
 # ---------------------------------------------------------------------------
 # 10-12. Sınırlar
 # ---------------------------------------------------------------------------
+
 
 def test_an_empty_allow_list_permits_nothing() -> None:
     """Liste boşsa hiçbir komut çalışmamalı."""

@@ -72,7 +72,7 @@ class Verifier:
                 ),
                 session_id=session_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ToolExecutor sözleşmesi gereği buraya düşülmemeli; yine de bir
             # savunma katmanı bırakıldı — doğrulamanın çökmesi, döngünün
             # sonucunu kaybetmesi anlamına gelmemeli.
@@ -84,9 +84,7 @@ class Verifier:
         if result.requires_approval:
             # Onay bekleyen bir doğrulama BAŞARISIZLIK DEĞİLDİR: çalıştırılmamış
             # bir testin sonucu yoktur. Döngü bunu "doğrulanmadı" olarak okur.
-            return Verification(
-                ran=False, command=command, skipped_reason=SKIP_NEEDS_APPROVAL
-            )
+            return Verification(ran=False, command=command, skipped_reason=SKIP_NEEDS_APPROVAL)
 
         if not result.success:
             reason = (

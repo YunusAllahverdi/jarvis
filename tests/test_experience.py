@@ -24,7 +24,6 @@ from pydantic import ValidationError
 
 from app.memory.experience import Experience, ExperienceOutcome
 
-
 # ---------------------------------------------------------------------------
 # Yardımcı
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ def guard(tmp_path: Path) -> PathGuard:
 # 1-3. İzin verilen durumlar
 # ---------------------------------------------------------------------------
 
+
 def test_ordinary_file_inside_root_is_allowed(guard: PathGuard) -> None:
     """Kök içindeki normal dosya kabul edilmeli."""
     resolved = guard.resolve("app/main.py")
@@ -63,6 +64,7 @@ def test_missing_write_target_is_allowed(guard: PathGuard) -> None:
 # ---------------------------------------------------------------------------
 # 4-6. Kaçış denemeleri
 # ---------------------------------------------------------------------------
+
 
 def test_parent_traversal_is_refused(guard: PathGuard) -> None:
     """`..` ile yukarı çıkmak engellenmeli."""
@@ -122,6 +124,7 @@ def test_returned_path_is_normalised_not_the_raw_input() -> None:
 # 7-12. Hassas dosyalar
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "name",
     [".env", ".env.local", ".env.production", "prod.env", ".git-credentials", ".netrc"],
@@ -163,6 +166,7 @@ def test_closed_directories_are_refused(guard: PathGuard, tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 # 13-15. Arayüz davranışı
 # ---------------------------------------------------------------------------
+
 
 def test_is_allowed_does_not_raise(guard: PathGuard) -> None:
     """Sorgulama biçimi hata fırlatmamalı."""

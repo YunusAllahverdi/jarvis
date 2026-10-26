@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -51,10 +52,10 @@ class SPAStaticFiles(StaticFiles):
     olurdu — bu yüzden aşağıda ayrıca korunuyor.
     """
 
-    async def get_response(self, path: str, scope) -> Response:  # noqa: ANN001
+    async def get_response(self, path: str, scope: Any) -> Response:
         try:
             return await super().get_response(path, scope)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Dosya yoksa (ya da bir dizinse) SPA girişine düşülür.
             return await super().get_response("index.html", scope)
 

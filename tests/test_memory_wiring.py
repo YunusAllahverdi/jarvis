@@ -62,7 +62,6 @@ from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 from app.services.memory_temporal import MemoryTemporalService
 
-
 # ---------------------------------------------------------------------------
 # Yardımcılar
 # ---------------------------------------------------------------------------
@@ -149,7 +148,9 @@ class _FailingStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         return []
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         return []
 
     def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
@@ -177,7 +178,9 @@ class _FailingSearchStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         return []
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         return []
 
     def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
@@ -326,14 +329,16 @@ class TestCreateAppBuildsMemoryStack:
 class TestChatWorksWithMemoryEnabled:
     def test_chat_request_succeeds_and_persists_extracted_memory(self, tmp_path: Path) -> None:
         chat_provider = _FakeChatProvider("Jarvis: Merhaba!")
-        memory_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "The user lives in Istanbul.",
-                "temporality": "present",
-                "status": "active",
-            }
-        ])
+        memory_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "The user lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         real_store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
         memory_service = MemoryWriteService(
             extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(memory_response)),
@@ -375,9 +380,16 @@ class TestChatSurvivesMemoryFailure:
 
     def test_store_failure_does_not_break_chat_response(self, tmp_path: Path) -> None:
         chat_provider = _FakeChatProvider("Jarvis: hâlâ ayakta.")
-        memory_response = _json_response([
-            {"memory_type": "fact", "content": "User owns a cat.", "temporality": "present", "status": "active"}
-        ])
+        memory_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User owns a cat.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         memory_service = MemoryWriteService(
             extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(memory_response)),
             store=_FailingStore(),
@@ -452,14 +464,16 @@ class TestEndToEndWriteThenRetrieve:
         MemoryRetrievalService.search() (FTS5) ile bulunup LLM bağlamına
         <relevant_memory> bloğu olarak eklenmelidir."""
         chat_provider = _FakeChatProvider("Jarvis: tamam.")
-        memory_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "The user's favorite city is Istanbul.",
-                "temporality": "present",
-                "status": "active",
-            }
-        ])
+        memory_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "The user's favorite city is Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         real_store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
         memory_service = MemoryWriteService(
             extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(memory_response)),
@@ -475,9 +489,7 @@ class TestEndToEndWriteThenRetrieve:
         )
 
         with TestClient(app) as client:
-            first = client.post(
-                "/api/chat", json={"message": "My favorite city is Istanbul."}
-            )
+            first = client.post("/api/chat", json={"message": "My favorite city is Istanbul."})
             session_id = first.json()["session_id"]
             assert real_store.count() == 1
 
@@ -548,15 +560,17 @@ class TestEndToEndTemporalConflictResolution:
         settings = _make_settings(tmp_path, memory_db_path=str(db_path))
 
         # --- Tur 1: Istanbul yazılır ---
-        turn1_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User lives in Istanbul.",
-                "temporality": "present",
-                "status": "active",
-                "topic_key": "user_residence",
-            }
-        ])
+        turn1_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                    "topic_key": "user_residence",
+                }
+            ]
+        )
         turn1_write_service = MemoryWriteService(
             extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(turn1_response)),
             store=real_store,
@@ -575,15 +589,17 @@ class TestEndToEndTemporalConflictResolution:
         assert istanbul_record.invalid_at is None
 
         # --- Tur 2: Ankara ile ÇAKIŞAN gerçek yazılır ---
-        turn2_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User lives in Ankara.",
-                "temporality": "present",
-                "status": "active",
-                "topic_key": "user_residence",
-            }
-        ])
+        turn2_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Ankara.",
+                    "temporality": "present",
+                    "status": "active",
+                    "topic_key": "user_residence",
+                }
+            ]
+        )
         turn2_write_service = MemoryWriteService(
             extractor=MemoryExtractor(provider=_FakeMemoryLLMProvider(turn2_response)),
             store=real_store,
@@ -630,16 +646,21 @@ class TestEndToEndTemporalConflictResolution:
         assert "Ankara" in memory_block
         assert "Istanbul" not in memory_block  # tarihsel/geçersiz kayıt sızmamalı
 
-    def test_temporal_service_failure_does_not_break_chat_response(
-        self, tmp_path: Path
-    ) -> None:
+    def test_temporal_service_failure_does_not_break_chat_response(self, tmp_path: Path) -> None:
         class _RaisingTemporalService:
-            def write(self, record: MemoryRecord):  # noqa: ANN201
+            def write(self, record: MemoryRecord):
                 raise RuntimeError("temporal boom")
 
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         chat_provider = _FakeChatProvider("Jarvis: hâlâ çalışıyor.")
         settings = _make_settings(tmp_path)
         app = create_app(

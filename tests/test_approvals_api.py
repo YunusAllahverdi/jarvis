@@ -22,9 +22,9 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.routes.approvals import router as approvals_router
 from app.config.settings import Settings
 from app.core.chat import ChatMessage, LLMResponse, ToolCall, ToolDefinition
-from app.api.routes.approvals import router as approvals_router
 from app.main import create_app
 from app.security.approvals import ApprovalService
 from app.security.permissions import ToolPermissionPolicy
@@ -115,6 +115,7 @@ def _open_request(service: ApprovalService, *, path: str = "a.txt", session: str
 # 1-2. Listeleme
 # ---------------------------------------------------------------------------
 
+
 def test_pending_requests_are_listed_with_arguments() -> None:
     """Kullanıcı neyi onayladığını görebilmeli."""
     client, service, _ = _build()
@@ -144,6 +145,7 @@ def test_pending_can_be_filtered_by_session() -> None:
 # ---------------------------------------------------------------------------
 # 3-4. Karar verme
 # ---------------------------------------------------------------------------
+
 
 def test_approving_runs_the_tool() -> None:
     """Onay, saklanan çağrıyı çalıştırmalı ve sonucu döndürmeli."""
@@ -175,6 +177,7 @@ def test_rejecting_does_not_run_the_tool() -> None:
 # ---------------------------------------------------------------------------
 # 5-7. Geçersiz durumlar
 # ---------------------------------------------------------------------------
+
 
 def test_second_approval_is_refused() -> None:
     """Aynı onay tekrar kullanılamamalı; araç ikinci kez çalışmamalı."""
@@ -216,6 +219,7 @@ def test_expired_approval_returns_410() -> None:
 # ---------------------------------------------------------------------------
 # 8-10. Sözleşme
 # ---------------------------------------------------------------------------
+
 
 def test_decision_body_cannot_carry_a_different_call() -> None:
     """İstemci gövdeye araç/argüman koyarak çalıştırılanı değiştirememeli."""

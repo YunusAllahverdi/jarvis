@@ -14,10 +14,10 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Temel kimlik türleri
 # ---------------------------------------------------------------------------
+
 
 def _new_id() -> str:
     return str(uuid4())
@@ -26,6 +26,7 @@ def _new_id() -> str:
 # ---------------------------------------------------------------------------
 # Zaman bilinci: geçmiş / şimdiki / gelecek
 # ---------------------------------------------------------------------------
+
 
 class Temporality(StrEnum):
     """Bir bellek öğesinin zamansal konumu."""
@@ -39,6 +40,7 @@ class Temporality(StrEnum):
 # ---------------------------------------------------------------------------
 # Temel bellek öğesi
 # ---------------------------------------------------------------------------
+
 
 class MemoryEntry(BaseModel):
     """Herhangi bir bellek katmanında saklanan en küçük birim.
@@ -61,6 +63,7 @@ class MemoryEntry(BaseModel):
 # ---------------------------------------------------------------------------
 # Anlamsal gerçekler ve varlıklar
 # ---------------------------------------------------------------------------
+
 
 class Fact(MemoryEntry):
     """Dünya veya kullanıcı hakkında kalıcı bir bilgi parçası.
@@ -106,6 +109,7 @@ class Relationship(MemoryEntry):
 # Episodik olaylar
 # ---------------------------------------------------------------------------
 
+
 class Event(MemoryEntry):
     """Belirli bir zamanda gerçekleşen veya gerçekleşecek bir olay.
 
@@ -115,8 +119,8 @@ class Event(MemoryEntry):
     title: str
     description: str = ""
     temporality: Temporality = Temporality.UNKNOWN
-    occurred_at: datetime | None = None       # kesin zaman (geçmiş/şimdi)
-    scheduled_at: datetime | None = None      # planlanan zaman (gelecek)
+    occurred_at: datetime | None = None  # kesin zaman (geçmiş/şimdi)
+    scheduled_at: datetime | None = None  # planlanan zaman (gelecek)
     location: str | None = None
     participants: list[str] = Field(default_factory=list)
     related_entity_ids: list[str] = Field(default_factory=list)
@@ -126,13 +130,14 @@ class Event(MemoryEntry):
 # Kullanıcı tercihleri ve hedefler
 # ---------------------------------------------------------------------------
 
+
 class Preference(MemoryEntry):
     """Kullanıcıya ait bir tercih veya kişisel ayar.
 
     Örnek: "Yanıtlar kısa olsun", "Türkçe konuş", "Sabah hatırlatmaları istiyor"
     """
 
-    category: str          # "communication", "schedule", "privacy", ...
+    category: str  # "communication", "schedule", "privacy", ...
     key: str
     value: Any
     is_explicit: bool = True  # kullanıcı açıkça mı belirtti?
@@ -157,6 +162,7 @@ class Goal(MemoryEntry):
 # Dünya/durum modeli
 # ---------------------------------------------------------------------------
 
+
 class WorldStateEntry(MemoryEntry):
     """Jarvis'in izlediği bir dış sistemin veya ortamın anlık durumu.
 
@@ -167,7 +173,7 @@ class WorldStateEntry(MemoryEntry):
     - Uçuş/taşıma durumu
     """
 
-    domain: str        # "home_assistant", "location", "weather", "transport", ...
-    key: str           # durum anahtarı, domain içinde benzersiz
-    value: Any         # anlık değer
+    domain: str  # "home_assistant", "location", "weather", "transport", ...
+    key: str  # durum anahtarı, domain içinde benzersiz
+    value: Any  # anlık değer
     expires_at: datetime | None = None  # bu durumun geçerlilik süresi

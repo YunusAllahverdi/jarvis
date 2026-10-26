@@ -26,11 +26,11 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.adapters.llm.base import LLMProvider, LLMProviderError
+from app.adapters.llm.base import LLMProviderError
 from app.council.anonymizer import LabelMap
 from app.council.models import (
     CandidateStatus,
@@ -49,7 +49,6 @@ from app.council.prompts import (
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 
 ERROR_TIMEOUT = "timeout"
 ERROR_PROVIDER = "provider_error"
@@ -101,9 +100,7 @@ def parse_json_object(raw_text: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def validate_review(
-    payload: _ReviewPayload, *, allowed_labels: Sequence[str]
-) -> str | None:
+def validate_review(payload: _ReviewPayload, *, allowed_labels: Sequence[str]) -> str | None:
     """İncelemeyi sunulan aday kümesine karşı deterministik olarak doğrular.
 
     Geçerliyse None, aksi halde kısa bir hata etiketi döndürür.
@@ -129,7 +126,7 @@ def validate_review(
 # ---------------------------------------------------------------------------
 
 
-async def _guarded(
+async def _guarded[T](
     factory: Callable[[], Awaitable[T]],
     *,
     semaphore: asyncio.Semaphore,
@@ -152,7 +149,7 @@ async def _guarded(
     except LLMProviderError as exc:
         logger.warning("council_provider_error", extra={"error": str(exc)})
         return None, ERROR_PROVIDER
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("council_unexpected_provider_error")
         return None, ERROR_PROVIDER
 
@@ -195,13 +192,11 @@ async def run_candidate_stage(
                 member_id=member.member_id,
                 label=label,
                 status=(
-                    CandidateStatus.TIMED_OUT
-                    if error == ERROR_TIMEOUT
-                    else CandidateStatus.FAILED
+                    CandidateStatus.TIMED_OUT if error == ERROR_TIMEOUT else CandidateStatus.FAILED
                 ),
                 error=error,
             )
-        if not (answer or "").strip():
+        if answer is None or not answer.strip():
             return CouncilCandidate(
                 member_id=member.member_id,
                 label=label,
@@ -266,9 +261,7 @@ async def run_review_stage(
         if len(others) < 1:
             return None
 
-        messages = build_review_messages(
-            request.task, others, max_answer_chars=max_candidate_chars
-        )
+        messages = build_review_messages(request.task, others, max_answer_chars=max_candidate_chars)
         raw, error = await _guarded(
             lambda: member.provider.generate(messages),
             semaphore=semaphore,
@@ -382,6 +375,6 @@ async def run_chairman_stage(
     )
     if error is not None:
         return None, error
-    if not (answer or "").strip():
+    if answer is None or not answer.strip():
         return None, ERROR_EMPTY
     return answer.strip(), None

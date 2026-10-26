@@ -184,9 +184,7 @@ class TestRoundTrip:
 
 
 class TestUpsertSemantics:
-    def test_second_upsert_updates_instead_of_inserting(
-        self, store: SQLiteUserTraitStore
-    ) -> None:
+    def test_second_upsert_updates_instead_of_inserting(self, store: SQLiteUserTraitStore) -> None:
         store.upsert(_make_trait(evidence_count=3, confidence=confidence_from_evidence(3)))
         store.upsert(_make_trait(evidence_count=8, confidence=confidence_from_evidence(8)))
 
@@ -371,9 +369,7 @@ class TestCoexistenceWithOtherStores:
         assert trait_store.count() == 1
         assert [p.name for p in tmp_path.glob("*.db")] == ["memory.db"]
 
-    def test_trait_store_can_be_created_before_the_other_stores(
-        self, tmp_path: Path
-    ) -> None:
+    def test_trait_store_can_be_created_before_the_other_stores(self, tmp_path: Path) -> None:
         """Şema kurulum sırası sonucu değiştirmemeli (idempotent DDL)."""
         db_path = tmp_path / "memory.db"
         trait_store = SQLiteUserTraitStore(str(db_path))

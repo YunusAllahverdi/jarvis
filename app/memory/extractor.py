@@ -33,7 +33,6 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.adapters.llm.base import LLMProvider, LLMProviderError
-from app.security.redaction import SECRET_PATTERNS
 from app.core.chat import ChatMessage
 from app.memory.record import (
     MemoryRecord,
@@ -41,6 +40,7 @@ from app.memory.record import (
     MemoryType,
     Temporality,
 )
+from app.security.redaction import SECRET_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +310,7 @@ class MemoryExtractor:
                 extra={"error": str(exc)},
             )
             return None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "memory_extraction_unexpected_error",
                 extra={"error": str(exc)},

@@ -82,9 +82,7 @@ async def get_profile(
     `min_confidence` hem listelenen trait'leri hem tür sayımlarını filtreler,
     böylece gösterilen sayılar listeyle tutarlı kalır.
     """
-    return _require_user_model(request).build_profile(
-        min_confidence=min_confidence, limit=limit
-    )
+    return _require_user_model(request).build_profile(min_confidence=min_confidence, limit=limit)
 
 
 @router.get("/traits", response_model=TraitListResponse, status_code=status.HTTP_200_OK)

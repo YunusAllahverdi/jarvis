@@ -254,9 +254,7 @@ class AnthropicProvider:
 
             return LLMResponse(content="".join(text_parts), tool_calls=tool_calls)
         except (KeyError, TypeError, ValueError) as exc:
-            raise LLMResponseError(
-                "Sağlayıcı beklenen mesaj yanıt biçimini döndürmedi."
-            ) from exc
+            raise LLMResponseError("Sağlayıcı beklenen mesaj yanıt biçimini döndürmedi.") from exc
 
     def _error_message(self, response: httpx.Response) -> str:
         """Hata gövdesinden okunabilir bir mesaj çıkarır.

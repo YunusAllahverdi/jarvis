@@ -11,17 +11,17 @@ from app.tools.builtin.filesystem import (
 )
 from app.tools.builtin.git_tools import GitDiffTool, GitStatusTool
 from app.tools.builtin.project import ProjectOverviewTool
-from app.tools.builtin.terminal import RunCommandTool
 from app.tools.builtin.system_info import GetDateTool, GetTimeTool, SystemStatusTool
+from app.tools.builtin.terminal import RunCommandTool
 
 __all__ = [
     "CalculatorTool",
     "EditFileTool",
     "GetDateTool",
-    "GrepTool",
     "GetTimeTool",
     "GitDiffTool",
     "GitStatusTool",
+    "GrepTool",
     "ListDirTool",
     "MemorySearchTool",
     "ProjectOverviewTool",

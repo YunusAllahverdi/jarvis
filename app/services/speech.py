@@ -79,9 +79,7 @@ class SpeechService:
             headers={"xi-api-key": self._api_key},
         )
 
-    async def stream(
-        self, text: str, *, voice_id: str | None = None
-    ) -> AsyncIterator[bytes]:
+    async def stream(self, text: str, *, voice_id: str | None = None) -> AsyncIterator[bytes]:
         """Metni seslendirir ve ses baytlarını parça parça verir.
 
         Gerçek akış kullanılır (`client.stream`): yanıtın tamamını belleğe
@@ -97,8 +95,7 @@ class SpeechService:
             raise SpeechError("Seslendirilecek metin boş.")
         if len(clean) > self._max_chars:
             raise SpeechError(
-                f"Metin çok uzun ({len(clean)} karakter). "
-                f"Sınır {self._max_chars} karakter."
+                f"Metin çok uzun ({len(clean)} karakter). Sınır {self._max_chars} karakter."
             )
 
         payload = {
@@ -122,9 +119,7 @@ class SpeechService:
                     if chunk:
                         yield chunk
         except httpx.TimeoutException as exc:
-            raise SpeechError(
-                f"Seslendirme {self._timeout:g} saniyede yanıt vermedi."
-            ) from exc
+            raise SpeechError(f"Seslendirme {self._timeout:g} saniyede yanıt vermedi.") from exc
         except httpx.RequestError as exc:
             raise SpeechError("ElevenLabs'e ulaşılamadı.") from exc
         finally:

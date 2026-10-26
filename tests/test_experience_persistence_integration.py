@@ -63,7 +63,6 @@ from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 
-
 # ---------------------------------------------------------------------------
 # Yardımcılar
 # ---------------------------------------------------------------------------
@@ -184,9 +183,7 @@ class _RecordingExperienceStore:
     def list_by_session(self, session_id: str, *, limit: int = 50) -> list[Experience]:
         return [e for e in self.added if e.session_id == session_id][:limit]
 
-    def list_recent(
-        self, *, limit: int = 50, before: datetime | None = None
-    ) -> list[Experience]:
+    def list_recent(self, *, limit: int = 50, before: datetime | None = None) -> list[Experience]:
         return list(reversed(self.added))[:limit]
 
 
@@ -206,9 +203,7 @@ class _FailingExperienceStore:
     def list_by_session(self, session_id: str, *, limit: int = 50) -> list[Experience]:
         return []
 
-    def list_recent(
-        self, *, limit: int = 50, before: datetime | None = None
-    ) -> list[Experience]:
+    def list_recent(self, *, limit: int = 50, before: datetime | None = None) -> list[Experience]:
         return []
 
 
@@ -563,9 +558,7 @@ class TestPersistenceFailureIsIsolated:
 
 
 class TestBuilderFailureDoesNotPersistStaleExperience:
-    def test_builder_failure_persists_nothing_at_all(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_builder_failure_persists_nothing_at_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import app.services.orchestrator as orchestrator_module
 
         def _raising_builder(**kwargs: object) -> Experience:
@@ -816,9 +809,7 @@ class TestRealSQLiteRoundTrip:
         assert fetched.outcome is ExperienceOutcome.UNKNOWN
         assert fetched.derived_memory_ids == []
 
-    def test_multi_round_tool_turn_produces_exactly_one_sqlite_row(
-        self, tmp_path: Path
-    ) -> None:
+    def test_multi_round_tool_turn_produces_exactly_one_sqlite_row(self, tmp_path: Path) -> None:
         store = SQLiteExperienceStore(str(tmp_path / "memory.db"))
         orchestrator = _make_orchestrator(
             provider=_MultiRoundToolCallingProvider(), experience_store=store
@@ -849,9 +840,7 @@ class TestRealSQLiteRoundTrip:
 
 
 class TestDuplicateIdBehaviour:
-    def test_adding_the_same_experience_twice_raises_integrity_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_adding_the_same_experience_twice_raises_integrity_error(self, tmp_path: Path) -> None:
         """Düz INSERT davranışı korunur: yinelenen kimlik bir programlama
         hatasıdır ve görünür kalmalıdır (INSERT OR IGNORE kullanılmaz)."""
         store = SQLiteExperienceStore(str(tmp_path / "memory.db"))
@@ -906,9 +895,7 @@ class TestDuplicateIdBehaviour:
 
 
 class TestSharedDatabaseFile:
-    def test_memory_and_experience_stores_coexist_on_the_same_file(
-        self, tmp_path: Path
-    ) -> None:
+    def test_memory_and_experience_stores_coexist_on_the_same_file(self, tmp_path: Path) -> None:
         db_path = tmp_path / "memory.db"
         memory_store = SQLiteMemoryStore(str(db_path))
         experience_store = SQLiteExperienceStore(str(db_path))
@@ -1020,9 +1007,7 @@ class TestApplicationWiring:
             # ... ama Experience kalıcılaştırması yine de kuruldu.
             assert isinstance(app.state.experience_store, SQLiteExperienceStore)
 
-    def test_chat_request_through_the_app_persists_one_experience(
-        self, tmp_path: Path
-    ) -> None:
+    def test_chat_request_through_the_app_persists_one_experience(self, tmp_path: Path) -> None:
         """Gerçek bir /api/chat isteği, enjekte edilen depoya tam olarak bir
         Experience yazar ve cevabı hiç etkilemez."""
         store = _RecordingExperienceStore()
@@ -1086,9 +1071,7 @@ class TestImportTimeSafety:
 
             with TestClient(main_module.app):
                 assert db_path.exists()
-                assert isinstance(
-                    main_module.app.state.experience_store, SQLiteExperienceStore
-                )
+                assert isinstance(main_module.app.state.experience_store, SQLiteExperienceStore)
         finally:
             get_settings.cache_clear()
             importlib.reload(main_module)

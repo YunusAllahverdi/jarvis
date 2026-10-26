@@ -75,8 +75,12 @@ def html_to_text(html: str) -> str:
 
     # Yaygın HTML varlıkları; tam bir çözümleme yerine en sık görülenler.
     for entity, replacement in (
-        ("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
-        ("&quot;", '"'), ("&#39;", "'"),
+        ("&nbsp;", " "),
+        ("&amp;", "&"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&quot;", '"'),
+        ("&#39;", "'"),
     ):
         without_tags = without_tags.replace(entity, replacement)
 

@@ -76,32 +76,38 @@ class TestEmptyInput:
 
 class TestInteractionStats:
     def test_counts_experiences_and_sessions(self) -> None:
-        analysis = analyze_experiences([
-            _exp(session_id="a"),
-            _exp(session_id="a"),
-            _exp(session_id="b"),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(session_id="a"),
+                _exp(session_id="a"),
+                _exp(session_id="b"),
+            ]
+        )
 
         assert analysis.stats.total_experiences == 3
         assert analysis.stats.session_count == 2
         assert analysis.stats.average_turns_per_session == 1.5
 
     def test_first_and_last_seen_span_the_whole_history(self) -> None:
-        analysis = analyze_experiences([
-            _exp(day=20, hour=8),
-            _exp(day=26, hour=22),
-            _exp(day=23, hour=13),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(day=20, hour=8),
+                _exp(day=26, hour=22),
+                _exp(day=23, hour=13),
+            ]
+        )
 
         assert analysis.stats.first_seen_at == datetime(2026, 8, 20, 8, 0, tzinfo=UTC)
         assert analysis.stats.last_seen_at == datetime(2026, 8, 26, 22, 0, tzinfo=UTC)
 
     def test_counts_tool_calls_and_average_per_turn(self) -> None:
-        analysis = analyze_experiences([
-            _exp(tool_calls=["get_time", "calculator"]),
-            _exp(tool_calls=["get_time"]),
-            _exp(),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(tool_calls=["get_time", "calculator"]),
+                _exp(tool_calls=["get_time"]),
+                _exp(),
+            ]
+        )
 
         assert analysis.stats.total_tool_calls == 3
         assert analysis.stats.average_tools_per_turn == 1.0
@@ -121,10 +127,12 @@ class TestInteractionStats:
 
 class TestToolUsage:
     def test_counts_and_shares_are_correct(self) -> None:
-        analysis = analyze_experiences([
-            _exp(tool_calls=["get_time", "get_time"]),
-            _exp(tool_calls=["get_time", "calculator"]),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(tool_calls=["get_time", "get_time"]),
+                _exp(tool_calls=["get_time", "calculator"]),
+            ]
+        )
 
         usage = {u.name: u for u in analysis.tool_usage}
         assert usage["get_time"].count == 3
@@ -133,10 +141,12 @@ class TestToolUsage:
         assert usage["calculator"].share == 0.25
 
     def test_ordered_by_count_descending(self) -> None:
-        analysis = analyze_experiences([
-            _exp(tool_calls=["calculator"]),
-            _exp(tool_calls=["get_time", "get_time"]),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(tool_calls=["calculator"]),
+                _exp(tool_calls=["get_time", "get_time"]),
+            ]
+        )
 
         assert [u.name for u in analysis.tool_usage] == ["get_time", "calculator"]
 
@@ -156,37 +166,45 @@ class TestToolUsage:
 class TestTopicDetection:
     def test_uses_document_frequency_not_raw_repetition(self) -> None:
         """Tek bir uzun mesaj bir kelimeyi tek başına "ilgi alanı" yapamamalı."""
-        analysis = analyze_experiences([
-            _exp(user_message="python python python python python python"),
-            _exp(user_message="django projesi"),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(user_message="python python python python python python"),
+                _exp(user_message="django projesi"),
+            ]
+        )
 
         topics = {t.term: t.document_frequency for t in analysis.topics}
         assert topics["python"] == 1  # 6 kez geçti ama tek turda
 
     def test_counts_distinct_turns(self) -> None:
-        analysis = analyze_experiences([
-            _exp(user_message="python öğreniyorum"),
-            _exp(user_message="python ile ilgili soru"),
-            _exp(user_message="bugün hava güzel"),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(user_message="python öğreniyorum"),
+                _exp(user_message="python ile ilgili soru"),
+                _exp(user_message="bugün hava güzel"),
+            ]
+        )
 
         topics = {t.term: t.document_frequency for t in analysis.topics}
         assert topics["python"] == 2
 
     def test_turkish_stopwords_are_removed(self) -> None:
-        analysis = analyze_experiences([
-            _exp(user_message="bunu bana çünkü şimdi lütfen teşekkürler"),
-            _exp(user_message="bunu bana çünkü şimdi lütfen teşekkürler"),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(user_message="bunu bana çünkü şimdi lütfen teşekkürler"),
+                _exp(user_message="bunu bana çünkü şimdi lütfen teşekkürler"),
+            ]
+        )
 
         assert analysis.topics == []
 
     def test_english_stopwords_are_removed(self) -> None:
-        analysis = analyze_experiences([
-            _exp(user_message="what about these things please thanks"),
-            _exp(user_message="what about these things please thanks"),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(user_message="what about these things please thanks"),
+                _exp(user_message="what about these things please thanks"),
+            ]
+        )
 
         assert [t.term for t in analysis.topics] == ["things"]
 
@@ -223,12 +241,14 @@ class TestTopicDetection:
 
 class TestActivityRhythm:
     def test_buckets_hours_into_parts_of_day(self) -> None:
-        analysis = analyze_experiences([
-            _exp(hour=2),
-            _exp(hour=8),
-            _exp(hour=14),
-            _exp(hour=21),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(hour=2),
+                _exp(hour=8),
+                _exp(hour=14),
+                _exp(hour=21),
+            ]
+        )
 
         assert analysis.rhythm.bucket_counts == {
             AFTERNOON: 1,
@@ -238,12 +258,14 @@ class TestActivityRhythm:
         }
 
     def test_dominant_bucket_and_share(self) -> None:
-        analysis = analyze_experiences([
-            _exp(hour=20),
-            _exp(hour=21),
-            _exp(hour=22),
-            _exp(hour=9),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(hour=20),
+                _exp(hour=21),
+                _exp(hour=22),
+                _exp(hour=9),
+            ]
+        )
 
         assert analysis.rhythm.dominant_bucket == EVENING
         assert analysis.rhythm.dominant_share == 0.75
@@ -287,10 +309,12 @@ class TestDeterminismAndPurity:
 
     def test_ties_are_broken_alphabetically(self) -> None:
         """Eşit sayımda sıra, girdi sırasına değil alfabeye bağlı olmalı."""
-        analysis = analyze_experiences([
-            _exp(tool_calls=["zebra"]),
-            _exp(tool_calls=["alpha"]),
-        ])
+        analysis = analyze_experiences(
+            [
+                _exp(tool_calls=["zebra"]),
+                _exp(tool_calls=["alpha"]),
+            ]
+        )
 
         assert [u.name for u in analysis.tool_usage] == ["alpha", "zebra"]
 

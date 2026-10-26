@@ -94,7 +94,7 @@ class MemoryWriteService:
         """
         try:
             extraction = await self._extractor.extract(user_message, session_id=session_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "memory_extraction_unexpected_failure",
                 extra={"session_id": session_id},
@@ -122,7 +122,7 @@ class MemoryWriteService:
                 else:
                     self._store.add(record)
                 stored_count += 1
-            except Exception:  # noqa: BLE001
+            except Exception:
                 store_failed = True
                 logger.exception(
                     "memory_store_write_failed",

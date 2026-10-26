@@ -1,7 +1,7 @@
 """Ollama `/api/chat` API adaptörü."""
 
-from collections.abc import Sequence
 import json
+from collections.abc import Sequence
 from typing import Any
 
 import httpx

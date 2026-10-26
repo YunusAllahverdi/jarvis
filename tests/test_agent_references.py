@@ -19,6 +19,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from pydantic import Field
 
 from app.agent.models import AgentAction, AgentDecision, AgentStatus, Intent
 from app.agent.references import (
@@ -33,7 +34,6 @@ from app.tools.base import PermissionLevel, Tool, ToolInput
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
-from pydantic import Field
 
 
 def _run(coro):  # type: ignore[no-untyped-def]
@@ -69,7 +69,9 @@ class TestReferenceResolution:
     def test_resolves_through_a_list_index(self) -> None:
         previous = [{"memories": [{"content": "python"}, {"content": "rust"}]}]
 
-        resolved = _resolve({"query": {"$from": {"step": 0, "path": "memories.1.content"}}}, previous)
+        resolved = _resolve(
+            {"query": {"$from": {"step": 0, "path": "memories.1.content"}}}, previous
+        )
 
         assert resolved == {"query": "rust"}
 

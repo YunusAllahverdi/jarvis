@@ -35,7 +35,7 @@ Gerçek kullanıcı veritabanına dokunulmaz.
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -48,7 +48,6 @@ from app.memory.record import (
 )
 from app.memory.sqlite_store import SQLiteMemoryStore, _extract_search_terms, _sanitize_fts_query
 from app.memory.store import MemoryStore
-
 
 # ---------------------------------------------------------------------------
 # Fixture
@@ -120,11 +119,13 @@ class TestMemoryRecord:
 
     def test_empty_content_is_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             MemoryRecord(content="")
 
     def test_importance_out_of_range_is_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             MemoryRecord(content="x", importance=1.5)
 
@@ -153,9 +154,7 @@ class TestMemoryRecord:
 
 
 class TestProtocolConformance:
-    def test_sqlite_store_satisfies_memory_store_protocol(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_sqlite_store_satisfies_memory_store_protocol(self, store: SQLiteMemoryStore) -> None:
         """isinstance() ile runtime_checkable Protocol kontrolü."""
         assert isinstance(store, MemoryStore)
 
@@ -287,9 +286,7 @@ class TestUpdate:
         assert fetched.importance == 0.7
         assert fetched.metadata == {"updated": True}
 
-    def test_update_unknown_id_raises_key_error(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_update_unknown_id_raises_key_error(self, store: SQLiteMemoryStore) -> None:
         ghost = MemoryRecord(content="ghost record")
         ghost.id = "does-not-exist"
         with pytest.raises(KeyError):
@@ -302,9 +299,7 @@ class TestUpdate:
 
 
 class TestInvalidate:
-    def test_invalidate_returns_true_on_success(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidate_returns_true_on_success(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="to invalidate"))
         assert store.invalidate(rec.id) is True
 
@@ -315,9 +310,7 @@ class TestInvalidate:
         assert fetched is not None
         assert fetched.invalid_at is not None
 
-    def test_invalidate_uses_provided_timestamp(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidate_uses_provided_timestamp(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="timestamp test"))
         custom_ts = datetime(2024, 1, 1, tzinfo=UTC)
         store.invalidate(rec.id, at=custom_ts)
@@ -326,30 +319,22 @@ class TestInvalidate:
         assert fetched.invalid_at is not None
         assert fetched.invalid_at.date() == custom_ts.date()
 
-    def test_invalidate_unknown_id_returns_false(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidate_unknown_id_returns_false(self, store: SQLiteMemoryStore) -> None:
         assert store.invalidate("nonexistent") is False
 
-    def test_invalidate_already_invalidated_returns_false(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidate_already_invalidated_returns_false(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="double invalidate"))
         store.invalidate(rec.id)
         assert store.invalidate(rec.id) is False
 
-    def test_invalidated_record_excluded_from_list_active(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_invalidated_record_excluded_from_list_active(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="should disappear"))
         store.invalidate(rec.id)
         active = store.list_active()
         ids = [r.id for r in active]
         assert rec.id not in ids
 
-    def test_physical_record_still_exists_after_invalidate(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_physical_record_still_exists_after_invalidate(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="physically present"))
         store.invalidate(rec.id)
         assert store.get(rec.id) is not None
@@ -384,25 +369,19 @@ class TestDelete:
     def test_delete_unknown_id_returns_false(self, store: SQLiteMemoryStore) -> None:
         assert store.delete("nonexistent") is False
 
-    def test_delete_already_deleted_returns_false(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_delete_already_deleted_returns_false(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="double delete"))
         store.delete(rec.id)
         assert store.delete(rec.id) is False
 
-    def test_deleted_record_excluded_from_list_active(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_deleted_record_excluded_from_list_active(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="invisible after delete"))
         store.delete(rec.id)
         active = store.list_active()
         ids = [r.id for r in active]
         assert rec.id not in ids
 
-    def test_physical_record_still_exists_after_delete(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_physical_record_still_exists_after_delete(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="physically kept"))
         store.delete(rec.id)
         assert store.get(rec.id) is not None
@@ -457,12 +436,8 @@ class TestListActive:
         assert planned[0].content == "planned rec"
 
     def test_filter_by_source_session_id(self, store: SQLiteMemoryStore) -> None:
-        store.add(
-            MemoryRecord(content="session A record", source_session_id="sess-A")
-        )
-        store.add(
-            MemoryRecord(content="session B record", source_session_id="sess-B")
-        )
+        store.add(MemoryRecord(content="session A record", source_session_id="sess-A"))
+        store.add(MemoryRecord(content="session B record", source_session_id="sess-B"))
         store.add(MemoryRecord(content="no session"))
 
         results = store.list_active(source_session_id="sess-A")
@@ -492,9 +467,7 @@ class TestListActive:
             )
         )
 
-        results = store.list_active(
-            memory_type=MemoryType.FACT, temporality=Temporality.PAST
-        )
+        results = store.list_active(memory_type=MemoryType.FACT, temporality=Temporality.PAST)
         assert len(results) == 1
         assert results[0].content == "fact past"
 
@@ -519,9 +492,7 @@ class TestListActive:
         assert page1[0].content == "newer"
         assert page2[0].content == "older"
 
-    def test_results_ordered_by_valid_at_descending(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_results_ordered_by_valid_at_descending(self, store: SQLiteMemoryStore) -> None:
         t1 = datetime(2024, 3, 1, tzinfo=UTC)
         t2 = datetime(2024, 6, 1, tzinfo=UTC)
         t3 = datetime(2024, 1, 1, tzinfo=UTC)
@@ -541,9 +512,7 @@ class TestListActive:
 
 
 class TestListBySession:
-    def test_returns_only_records_for_given_session(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_returns_only_records_for_given_session(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="sess-X rec 1", source_session_id="sess-X"))
         store.add(MemoryRecord(content="sess-X rec 2", source_session_id="sess-X"))
         store.add(MemoryRecord(content="sess-Y rec", source_session_id="sess-Y"))
@@ -552,9 +521,7 @@ class TestListBySession:
         assert len(results) == 2
         assert all(r.source_session_id == "sess-X" for r in results)
 
-    def test_excludes_deleted_records_by_default(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_excludes_deleted_records_by_default(self, store: SQLiteMemoryStore) -> None:
         r1 = store.add(MemoryRecord(content="keep", source_session_id="s"))
         r2 = store.add(MemoryRecord(content="delete me", source_session_id="s"))
         store.delete(r2.id)
@@ -586,9 +553,7 @@ class TestListBySession:
         assert r1.id in ids
         assert r2.id in ids
 
-    def test_include_invalidated_still_excludes_deleted(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_include_invalidated_still_excludes_deleted(self, store: SQLiteMemoryStore) -> None:
         r1 = store.add(MemoryRecord(content="valid", source_session_id="s"))
         r2 = store.add(MemoryRecord(content="deleted", source_session_id="s"))
         store.delete(r2.id)
@@ -598,23 +563,15 @@ class TestListBySession:
         assert r1.id in ids
         assert r2.id not in ids
 
-    def test_unknown_session_returns_empty_list(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_unknown_session_returns_empty_list(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="irrelevant", source_session_id="other"))
         assert store.list_by_session("no-such-session") == []
 
-    def test_results_ordered_by_created_at_ascending(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_results_ordered_by_created_at_ascending(self, store: SQLiteMemoryStore) -> None:
         t1 = datetime(2024, 1, 1, tzinfo=UTC)
         t2 = datetime(2024, 1, 2, tzinfo=UTC)
-        r1 = store.add(
-            MemoryRecord(content="first", source_session_id="s", valid_at=t1)
-        )
-        r2 = store.add(
-            MemoryRecord(content="second", source_session_id="s", valid_at=t2)
-        )
+        r1 = store.add(MemoryRecord(content="first", source_session_id="s", valid_at=t1))
+        r2 = store.add(MemoryRecord(content="second", source_session_id="s", valid_at=t2))
         results = store.list_by_session("s")
         # created_at ASC — ekleme sırası
         assert results[0].id == r1.id
@@ -633,9 +590,7 @@ class TestSearch:
         assert len(results) == 1
         assert "Python" in results[0].content
 
-    def test_search_returns_empty_for_no_match(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_search_returns_empty_for_no_match(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="Java is a programming language"))
         results = store.search("Rust")
         assert results == []
@@ -645,9 +600,7 @@ class TestSearch:
         assert store.search("") == []
         assert store.search("   ") == []
 
-    def test_whitespace_only_query_returns_empty_list(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_whitespace_only_query_returns_empty_list(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="some content"))
         assert store.search("   \t\n  ") == []
 
@@ -657,9 +610,7 @@ class TestSearch:
         results = store.search("findme")
         assert results == []
 
-    def test_search_excludes_invalidated_records(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_search_excludes_invalidated_records(self, store: SQLiteMemoryStore) -> None:
         rec = store.add(MemoryRecord(content="invalidated keyword searchme"))
         store.invalidate(rec.id)
         results = store.search("searchme")
@@ -719,17 +670,13 @@ class TestSearch:
         results = store.search("keyword", limit=3)
         assert len(results) <= 3
 
-    def test_search_with_single_char_query_returns_empty(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_search_with_single_char_query_returns_empty(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="single character x test"))
         # _sanitize_fts_query 1 karakterlik token'ları atar
         results = store.search("x")
         assert results == []
 
-    def test_fts_special_chars_in_query_do_not_raise(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_fts_special_chars_in_query_do_not_raise(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="normal content here"))
         # Özel karakterler sanitize edilmeli; hata fırlatmamalı
         results = store.search('(dangerous "query")')
@@ -777,7 +724,7 @@ class TestSanitizeFtsQuery:
         assert result == "hello world"
 
     def test_all_special_chars_returns_empty_string(self) -> None:
-        result = _sanitize_fts_query('"\'()*^+-:~')
+        result = _sanitize_fts_query("\"'()*^+-:~")
         assert result == ""
 
     def test_preserves_non_ascii_words(self) -> None:
@@ -802,18 +749,14 @@ class TestCount:
         store.add(MemoryRecord(content="three"))
         assert store.count() == 3
 
-    def test_count_excludes_deleted_by_default(
-        self, store: SQLiteMemoryStore
-    ) -> None:
-        r1 = store.add(MemoryRecord(content="keep"))
+    def test_count_excludes_deleted_by_default(self, store: SQLiteMemoryStore) -> None:
+        store.add(MemoryRecord(content="keep"))
         r2 = store.add(MemoryRecord(content="remove"))
         store.delete(r2.id)
         assert store.count() == 1
 
-    def test_count_includes_deleted_when_flag_set(
-        self, store: SQLiteMemoryStore
-    ) -> None:
-        r1 = store.add(MemoryRecord(content="keep"))
+    def test_count_includes_deleted_when_flag_set(self, store: SQLiteMemoryStore) -> None:
+        store.add(MemoryRecord(content="keep"))
         r2 = store.add(MemoryRecord(content="remove"))
         store.delete(r2.id)
         assert store.count(include_deleted=True) == 2
@@ -831,9 +774,7 @@ class TestCount:
 
 
 class TestNaturalLanguageQueries:
-    def test_english_question_retrieves_relevant_memory(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_english_question_retrieves_relevant_memory(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
         results = store.search("What was my YKS goal?")
         assert len(results) == 1
@@ -846,9 +787,7 @@ class TestNaturalLanguageQueries:
         results = store.search("Do you remember my YKS target?")
         assert len(results) == 1
 
-    def test_turkish_question_retrieves_relevant_memory(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_turkish_question_retrieves_relevant_memory(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
         results = store.search("YKS hedefim neydi?")
         assert len(results) == 1
@@ -860,9 +799,7 @@ class TestNaturalLanguageQueries:
         results = store.search("What are my TYT and AYT targets?")
         assert len(results) == 1
 
-    def test_simple_keyword_query_still_works_unchanged(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_simple_keyword_query_still_works_unchanged(self, store: SQLiteMemoryStore) -> None:
         """Mevcut, basit tek kelimelik anahtar kelime aramaları etkilenmemeli."""
         store.add(MemoryRecord(content="The user enjoys reading science fiction books."))
         results = store.search("science")
@@ -885,9 +822,7 @@ class TestNaturalLanguageQueries:
         results = store.search("What did I say about my exam target?")
         assert results == []
 
-    def test_natural_language_query_respects_limit(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_natural_language_query_respects_limit(self, store: SQLiteMemoryStore) -> None:
         for i in range(10):
             store.add(MemoryRecord(content=f"User's goal number {i} is important."))
         results = store.search("What was my goal again?", limit=3)
@@ -909,9 +844,7 @@ class TestNaturalLanguageQueries:
         results = store.search("What was my YKS goal?")
         assert results == []
 
-    def test_empty_and_whitespace_queries_remain_safe(
-        self, store: SQLiteMemoryStore
-    ) -> None:
+    def test_empty_and_whitespace_queries_remain_safe(self, store: SQLiteMemoryStore) -> None:
         store.add(MemoryRecord(content="User's YKS goal is 100 TYT and 60 AYT."))
         assert store.search("") == []
         assert store.search("   ") == []

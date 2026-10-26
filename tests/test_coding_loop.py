@@ -39,7 +39,6 @@ from app.tools.base import PermissionLevel, Tool, ToolExecutionError, ToolInput
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # Sahte araçlar
 # ---------------------------------------------------------------------------
@@ -218,9 +217,7 @@ def _build_loop(
 
 def test_passing_verification_completes_the_loop() -> None:
     provider = _ScriptedProvider(_task(), _plan(_read_step()))
-    loop = _build_loop(
-        provider, tools=(_ReadTool(), _FakeRunCommandTool({"exit_code": 0}))
-    )
+    loop = _build_loop(provider, tools=(_ReadTool(), _FakeRunCommandTool({"exit_code": 0})))
 
     result = _run(loop.run("bir şey düzelt"))
 
@@ -302,9 +299,7 @@ def test_rejected_command_does_not_spend_a_repair_round() -> None:
 
 def test_approval_stops_the_loop_and_skips_remaining_steps() -> None:
     """Onaylanmamış bir işin yarısı çoktan yapılmış olmamalıdır."""
-    provider = _ScriptedProvider(
-        _task(), _plan(_edit_step(), _read_step("app/after.py"))
-    )
+    provider = _ScriptedProvider(_task(), _plan(_edit_step(), _read_step("app/after.py")))
     edit_tool = _EditTool()
     loop = _build_loop(
         provider,
@@ -426,9 +421,7 @@ def test_exploding_tool_does_not_crash_the_loop() -> None:
             {"tool": "exploding_tool", "arguments": {"path": "a"}, "purpose": "patla"},
         ),
     )
-    loop = _build_loop(
-        provider, tools=(_ReadTool(), _ExplodingTool()), verification_candidates=()
-    )
+    loop = _build_loop(provider, tools=(_ReadTool(), _ExplodingTool()), verification_candidates=())
 
     result = _run(loop.run("oku"))
 
@@ -462,7 +455,7 @@ def test_loop_does_not_invent_a_second_execution_path() -> None:
     loop = _build_loop(provider, tools=(_ReadTool(),), verification_candidates=())
     seen: list[str] = []
 
-    executor = loop._tool_executor  # noqa: SLF001 - sınırın kullanıldığını kanıtlamak için
+    executor = loop._tool_executor
     original = executor.execute
 
     async def _spy(call, **kwargs):  # type: ignore[no-untyped-def]

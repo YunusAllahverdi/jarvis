@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.coding.models import CodingResult
 from app.council.models import CouncilRequest, CouncilTrigger
@@ -120,7 +120,7 @@ class CodeReviewer:
                 # başlar: döngü diff'i ürettiğinde inceleme zaten istenmiştir.
                 trigger=CouncilTrigger.EXPLICIT_REQUEST,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("code_review_failed", extra={"session_id": result.session_id})
             return CodeReview(ran=False, skipped_reason="İnceleme çalıştırılamadı.")
 

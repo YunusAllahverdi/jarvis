@@ -48,8 +48,7 @@ class NoteSearchTool(Tool[NoteSearchInput]):
 
     name = NOTE_SEARCH_TOOL_NAME
     description = (
-        "Kullanıcının kayıtlı notlarını arar. Sorgu verilmezse en son "
-        "güncellenen notları döndürür."
+        "Kullanıcının kayıtlı notlarını arar. Sorgu verilmezse en son güncellenen notları döndürür."
     )
     permission = PermissionLevel.READ
     input_model = NoteSearchInput
@@ -60,7 +59,7 @@ class NoteSearchTool(Tool[NoteSearchInput]):
     async def execute(self, tool_input: NoteSearchInput) -> dict[str, Any]:
         try:
             notes = self._store.list(query=tool_input.query, limit=tool_input.limit)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ToolExecutionError("Notlar okunamadı.") from exc
 
         return {
@@ -129,7 +128,7 @@ class NoteWriteTool(Tool[NoteWriteInput]):
             )
         except ValueError as exc:
             raise ToolExecutionError(str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ToolExecutionError("Not kaydedilemedi.") from exc
 
         return {"id": note.id, "title": note.title, "updated": False}

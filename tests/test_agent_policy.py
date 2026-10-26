@@ -28,8 +28,6 @@ from app.agent.policy import (
     RuleBasedDecisionPolicy,
     extract_arithmetic_expression,
 )
-from app.services.memory_retrieval import MemoryRetrievalService
-from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry, register_context_tools
 
@@ -41,15 +39,15 @@ def _run(coro):  # type: ignore[no-untyped-def]
 
 
 class _StubRetrieval:
-    def retrieve(self, query, **kwargs):  # noqa: ANN001, ANN003, ANN201
+    def retrieve(self, query, **kwargs):
         return []
 
 
 class _StubUserModel:
-    def build_profile(self, **kwargs):  # noqa: ANN003, ANN201
+    def build_profile(self, **kwargs):
         raise AssertionError("politika servis çağırmamalı")
 
-    def list_traits(self, **kwargs):  # noqa: ANN003, ANN201
+    def list_traits(self, **kwargs):
         return []
 
 
@@ -221,7 +219,7 @@ class TestArithmeticDetection:
         assert extract_arithmetic_expression("saat 5 gibi geleceğim") is None
 
     def test_expression_buried_in_an_unrelated_request_is_ignored(self) -> None:
-        """"5-3 arası" bir aralıktır, hesaplanacak bir işlem değil."""
+        """ "5-3 arası" bir aralıktır, hesaplanacak bir işlem değil."""
         assert extract_arithmetic_expression("5-3 arası bir sayı söyle bana lütfen") is None
 
     def test_explicit_cue_rescues_a_buried_expression(self) -> None:

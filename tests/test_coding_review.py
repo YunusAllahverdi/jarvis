@@ -22,8 +22,8 @@ from app.coding.models import CodingResult, CodingStatus, TaskSpec
 from app.coding.review import CodeReview, CodeReviewer
 from app.coding.summary import build_summary
 from app.council.models import (
-    CouncilCandidate,
     CandidateStatus,
+    CouncilCandidate,
     CouncilRequest,
     CouncilResult,
     CouncilStatus,
@@ -65,7 +65,9 @@ class _FakeCouncil:
         )
 
 
-def _result(diff: str | None = "--- a/app/x.py\n+++ b/app/x.py\n+API_KEY = 'sk-123'") -> CodingResult:
+def _result(
+    diff: str | None = "--- a/app/x.py\n+++ b/app/x.py\n+API_KEY = 'sk-123'",
+) -> CodingResult:
     return CodingResult(
         request="anahtarı ekle",
         status=CodingStatus.COMPLETED,

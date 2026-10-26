@@ -38,7 +38,9 @@ _DEFAULT_TIMEOUT = 15.0
 
 
 class MapsGeocodeInput(ToolInput):
-    address: str = Field(min_length=1, max_length=500, description="Koordinatlarına çevrilecek adres.")
+    address: str = Field(
+        min_length=1, max_length=500, description="Koordinatlarına çevrilecek adres."
+    )
 
 
 class MapsGeocodeTool(Tool[MapsGeocodeInput]):
@@ -93,7 +95,7 @@ class MapsGeocodeTool(Tool[MapsGeocodeInput]):
     @staticmethod
     def _parse_json(response: httpx.Response) -> dict[str, Any]:
         try:
-            return response.json()  # type: ignore[return-value]
+            return response.json()
         except Exception as exc:
             raise ToolExecutionError("Google Maps yanıtı çözümlenemedi.") from exc
 
@@ -102,8 +104,12 @@ class MapsGeocodeTool(Tool[MapsGeocodeInput]):
 
 
 class MapsDirectionsInput(ToolInput):
-    origin: str = Field(min_length=1, max_length=500, description="Başlangıç noktası (adres veya enlem,boylam).")
-    destination: str = Field(min_length=1, max_length=500, description="Bitiş noktası (adres veya enlem,boylam).")
+    origin: str = Field(
+        min_length=1, max_length=500, description="Başlangıç noktası (adres veya enlem,boylam)."
+    )
+    destination: str = Field(
+        min_length=1, max_length=500, description="Bitiş noktası (adres veya enlem,boylam)."
+    )
     mode: str = Field(
         default="driving",
         description="Ulaşım modu: driving, walking, bicycling, transit.",
@@ -169,6 +175,7 @@ class MapsDirectionsTool(Tool[MapsDirectionsInput]):
                 instruction = step.get("html_instructions", "")
                 # HTML etiketlerini temizle
                 import re
+
                 clean = re.sub(r"<[^>]+>", " ", instruction).strip()
                 distance = step.get("distance", {}).get("text", "")
                 if clean:
@@ -198,12 +205,16 @@ class MapsDirectionsTool(Tool[MapsDirectionsInput]):
 
 
 class MapsPlacesInput(ToolInput):
-    query: str = Field(min_length=1, max_length=300, description="Aranacak yer adı veya türü (ör. 'istanbul kahve', 'eczane').")
+    query: str = Field(
+        min_length=1,
+        max_length=300,
+        description="Aranacak yer adı veya türü (ör. 'istanbul kahve', 'eczane').",
+    )
     location: str | None = Field(
         default=None,
         max_length=100,
         description="Arama merkezi: 'enlem,boylam' biçiminde (ör. '41.0082,28.9784'). "
-                    "Verilmezse global arama yapılır.",
+        "Verilmezse global arama yapılır.",
     )
     radius_meters: int = Field(
         default=5000,
@@ -240,9 +251,7 @@ class MapsPlacesTool(Tool[MapsPlacesInput]):
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.get(
-                    f"{_MAPS_BASE}/place/textsearch/json", params=params
-                )
+                response = await client.get(f"{_MAPS_BASE}/place/textsearch/json", params=params)
         except httpx.TimeoutException as exc:
             raise ToolExecutionError("Yer arama isteği zaman aşımına uğradı.") from exc
         except httpx.RequestError as exc:

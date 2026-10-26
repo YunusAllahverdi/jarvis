@@ -53,7 +53,10 @@ class TestCandidate:
         assert candidate.status is CandidateStatus.SUCCESS
 
     def test_failed_candidate_is_not_successful(self) -> None:
-        assert _candidate(status=CandidateStatus.FAILED, answer="", error="provider_error").succeeded is False
+        assert (
+            _candidate(status=CandidateStatus.FAILED, answer="", error="provider_error").succeeded
+            is False
+        )
 
     def test_timed_out_candidate_is_not_successful(self) -> None:
         assert _candidate(status=CandidateStatus.TIMED_OUT, answer="").succeeded is False
@@ -119,7 +122,9 @@ class TestCouncilResult:
             final_answer="x",
             candidates=[
                 _candidate(label="A"),
-                _candidate(member_id="member-2", label="B", status=CandidateStatus.TIMED_OUT, answer=""),
+                _candidate(
+                    member_id="member-2", label="B", status=CandidateStatus.TIMED_OUT, answer=""
+                ),
             ],
         )
 
@@ -137,7 +142,9 @@ class TestCouncilResult:
             CouncilGateDecision(run=False, reason="")
 
     def test_gate_decision_is_frozen(self) -> None:
-        decision = CouncilGateDecision(run=True, reason="x", trigger=CouncilTrigger.EXPLICIT_REQUEST)
+        decision = CouncilGateDecision(
+            run=True, reason="x", trigger=CouncilTrigger.EXPLICIT_REQUEST
+        )
         with pytest.raises(ValidationError):
             decision.run = False  # type: ignore[misc]
 

@@ -27,24 +27,20 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import pytest
-
+import app.services.orchestrator as orchestrator_module
 from app.adapters.llm.base import LLMUnavailableError
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.memory.extractor import MemoryExtractor
 from app.memory.record import MemoryRecord, MemoryType
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
+from app.services.conversation import InMemoryConversationStore
 from app.services.memory_service import MemoryWriteResult, MemoryWriteService
 from app.services.memory_temporal import MemoryTemporalService
-
-import app.services.orchestrator as orchestrator_module
-from app.services.conversation import InMemoryConversationStore
 from app.services.orchestrator import ChatOrchestrator
 from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
-
 
 # ---------------------------------------------------------------------------
 # Yardımcılar
@@ -130,7 +126,9 @@ class _InMemoryFakeStore:
     def list_active(self, **kwargs: Any) -> list[MemoryRecord]:
         return list(self.records.values())
 
-    def list_by_session(self, session_id: str, *, include_invalidated: bool = False) -> list[MemoryRecord]:
+    def list_by_session(
+        self, session_id: str, *, include_invalidated: bool = False
+    ) -> list[MemoryRecord]:
         return [r for r in self.records.values() if r.source_session_id == session_id]
 
     def search(self, query: str, **kwargs: Any) -> list[MemoryRecord]:
@@ -148,14 +146,16 @@ def _make_extractor(response: str) -> MemoryExtractor:
 
 class TestSuccessfulPersistence:
     def test_single_memory_is_extracted_and_stored(self) -> None:
-        response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "The user lives in Istanbul.",
-                "temporality": "present",
-                "status": "active",
-            }
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "The user lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -178,11 +178,28 @@ class TestSuccessfulPersistence:
 
 class TestMultiplePersistence:
     def test_multiple_memories_are_all_stored(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Ankara.", "temporality": "present", "status": "active"},
-            {"memory_type": "preference", "content": "User prefers tea over coffee.", "temporality": "present", "status": "active"},
-            {"memory_type": "goal", "content": "User wants to learn Spanish.", "temporality": "future", "status": "planned"},
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Ankara.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "preference",
+                    "content": "User prefers tea over coffee.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "goal",
+                    "content": "User wants to learn Spanish.",
+                    "temporality": "future",
+                    "status": "planned",
+                },
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -261,9 +278,16 @@ class TestExtractionFailureIsolated:
 
 class TestStoreFailureIsolated:
     def test_store_add_raising_is_isolated_and_reported(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User uses Linux.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User uses Linux.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore(fail_on_add=True)
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -275,10 +299,22 @@ class TestStoreFailureIsolated:
         assert result.stored_count == 0
 
     def test_partial_store_failure_still_reports_successful_writes(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "First fact here.", "temporality": "present", "status": "active"},
-            {"memory_type": "fact", "content": "Second fact here.", "temporality": "present", "status": "active"},
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "First fact here.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+                {
+                    "memory_type": "fact",
+                    "content": "Second fact here.",
+                    "temporality": "present",
+                    "status": "active",
+                },
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -308,9 +344,16 @@ class TestStoreFailureIsolated:
 
 class TestSessionIdPropagation:
     def test_session_id_flows_to_stored_records(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User works remotely.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User works remotely.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -320,9 +363,16 @@ class TestSessionIdPropagation:
         assert stored.source_session_id == "sess-42"
 
     def test_no_session_id_leaves_field_none(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User works remotely.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User works remotely.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -346,9 +396,16 @@ class TestPersistedThroughMemoryStoreProtocol:
         """Servis, gerçek SQLiteMemoryStore ile de (Protocol üzerinden) çalışmalı."""
         from app.memory.sqlite_store import SQLiteMemoryStore
 
-        response = _json_response([
-            {"memory_type": "fact", "content": "User is a backend developer.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User is a backend developer.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         real_store = SQLiteMemoryStore(str(tmp_path / "memory.db"))
         service = MemoryWriteService(extractor=_make_extractor(response), store=real_store)
 
@@ -414,9 +471,16 @@ class TestOrchestratorDecoupledFromSQLite:
 
     def test_orchestrator_persists_memories_via_non_sqlite_store(self) -> None:
         """Orchestrator, SQLite olmayan bir MemoryStore ile de sorunsuz çalışmalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "User codes in Python.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User codes in Python.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
         orchestrator = _make_orchestrator(memory_service=service)
@@ -442,9 +506,16 @@ class TestMemoryFailureIsolatedFromChatResponse:
         assert store.records == {}
 
     def test_store_failure_does_not_break_chat_response(self) -> None:
-        response = _json_response([
-            {"memory_type": "fact", "content": "User owns a cat.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User owns a cat.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore(fail_on_add=True)
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
         orchestrator = _make_orchestrator(memory_service=service)
@@ -469,7 +540,7 @@ class TestMemoryFailureIsolatedFromChatResponse:
             memory_service=service,
         )
 
-        result = _run(orchestrator.respond("Merhaba", "sess-hist"))
+        _run(orchestrator.respond("Merhaba", "sess-hist"))
 
         conversation = conversation_store.get_or_create("sess-hist")
         assert [m.role for m in conversation.messages] == ["user", "assistant"]
@@ -509,16 +580,23 @@ class TestExistingBehaviorUnchangedWhenNoMemories:
 class _RaisingTemporalService:
     """write() çağrısında her zaman beklenmedik bir hata fırlatan sahte servis."""
 
-    def write(self, record: MemoryRecord):  # noqa: ANN201
+    def write(self, record: MemoryRecord):
         raise RuntimeError("temporal service boom")
 
 
 class TestTemporalServiceIntegration:
     def test_temporal_service_none_means_direct_add_unchanged(self) -> None:
         """temporal_service verilmezse MemoryWriteService eskisi gibi doğrudan add() kullanmalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         store = _InMemoryFakeStore()
         service = MemoryWriteService(extractor=_make_extractor(response), store=store)
 
@@ -528,41 +606,47 @@ class TestTemporalServiceIntegration:
         assert result.invalidated_count == 0
         assert len(store.records) == 1
 
-    def test_conflicting_facts_across_two_turns_invalidate_old_one(
-        self, tmp_path: Path
-    ) -> None:
+    def test_conflicting_facts_across_two_turns_invalidate_old_one(self, tmp_path: Path) -> None:
         """MemoryTemporalService verildiğinde, iki ayrı sohbet turunda aynı
         topic_key ile gelen çakışan gerçekler doğru şekilde çözülmeli."""
         store = SQLiteMemoryStore(str(tmp_path / "temporal_integration.db"))
         temporal_service = MemoryTemporalService(store=store)
 
-        first_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User lives in Istanbul.",
-                "temporality": "present",
-                "status": "active",
-                "topic_key": "user_residence",
-            }
-        ])
+        first_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                    "topic_key": "user_residence",
+                }
+            ]
+        )
         service_turn1 = MemoryWriteService(
-            extractor=_make_extractor(first_response), store=store, temporal_service=temporal_service
+            extractor=_make_extractor(first_response),
+            store=store,
+            temporal_service=temporal_service,
         )
         result1 = _run(service_turn1.process_turn("I live in Istanbul.", session_id="s1"))
         assert result1.stored_count == 1
         assert result1.invalidated_count == 0
 
-        second_response = _json_response([
-            {
-                "memory_type": "fact",
-                "content": "User lives in Ankara.",
-                "temporality": "present",
-                "status": "active",
-                "topic_key": "user_residence",
-            }
-        ])
+        second_response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Ankara.",
+                    "temporality": "present",
+                    "status": "active",
+                    "topic_key": "user_residence",
+                }
+            ]
+        )
         service_turn2 = MemoryWriteService(
-            extractor=_make_extractor(second_response), store=store, temporal_service=temporal_service
+            extractor=_make_extractor(second_response),
+            store=store,
+            temporal_service=temporal_service,
         )
         result2 = _run(service_turn2.process_turn("I moved to Ankara.", session_id="s1"))
         assert result2.stored_count == 1
@@ -577,9 +661,16 @@ class TestTemporalServiceIntegration:
     def test_temporal_service_failure_is_isolated_and_does_not_raise(self) -> None:
         """MemoryTemporalService.write() beklenmedik hata fırlatırsa, bu mevcut
         'depolama hatası' izolasyon yolundan geçmeli — hiçbir istisna dışarı sızmamalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         service = MemoryWriteService(
             extractor=_make_extractor(response),
             store=_InMemoryFakeStore(),
@@ -595,9 +686,16 @@ class TestTemporalServiceIntegration:
     def test_temporal_service_failure_does_not_break_chat_via_orchestrator(self) -> None:
         """Uçtan uca: ChatOrchestrator + MemoryWriteService + patlayan
         temporal_service — normal sohbet cevabı yine de başarılı olmalı."""
-        response = _json_response([
-            {"memory_type": "fact", "content": "User lives in Istanbul.", "temporality": "present", "status": "active"}
-        ])
+        response = _json_response(
+            [
+                {
+                    "memory_type": "fact",
+                    "content": "User lives in Istanbul.",
+                    "temporality": "present",
+                    "status": "active",
+                }
+            ]
+        )
         memory_service = MemoryWriteService(
             extractor=_make_extractor(response),
             store=_InMemoryFakeStore(),

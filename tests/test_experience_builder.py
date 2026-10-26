@@ -30,7 +30,6 @@ from app.core.chat import ChatMessage, ToolCall
 from app.memory.experience import Experience, ExperienceOutcome
 from app.memory.experience_builder import build_experience_from_turn
 
-
 # ---------------------------------------------------------------------------
 # Yardımcılar
 # ---------------------------------------------------------------------------
@@ -146,7 +145,9 @@ class TestToolCallExtraction:
             _user("test"),
             ChatMessage(
                 role="assistant",
-                tool_calls=[ToolCall(name="calculator", arguments={"expression": "2+3"}, call_id="abc")],
+                tool_calls=[
+                    ToolCall(name="calculator", arguments={"expression": "2+3"}, call_id="abc")
+                ],
             ),
             _tool_result("calculator", content='{"ok": true, "result": {"value": 5}}'),
             _assistant_final("5"),

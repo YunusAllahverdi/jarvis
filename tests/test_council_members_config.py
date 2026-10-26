@@ -210,7 +210,9 @@ def test_delete_removes_a_member(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _client(tmp_path: Path, *, with_store: bool = True) -> tuple[TestClient, CouncilMemberStore | None]:
+def _client(
+    tmp_path: Path, *, with_store: bool = True
+) -> tuple[TestClient, CouncilMemberStore | None]:
     app = FastAPI()
     store = _store(tmp_path) if with_store else None
     app.state.settings = Settings(
@@ -236,7 +238,7 @@ def test_endpoint_lists_members_without_keys(tmp_path: Path) -> None:
 
 
 def test_endpoint_adds_and_deletes_members(tmp_path: Path) -> None:
-    client, _store_ = _client(tmp_path)
+    client, _ = _client(tmp_path)
 
     created = client.put(
         "/api/admin/council/members/uzak-model",
@@ -262,7 +264,7 @@ def test_endpoint_adds_and_deletes_members(tmp_path: Path) -> None:
 
 
 def test_invalid_member_id_is_rejected(tmp_path: Path) -> None:
-    client, _store_ = _client(tmp_path)
+    client, _ = _client(tmp_path)
 
     response = client.put(
         "/api/admin/council/members/Büyük Harfli Ad",
@@ -273,7 +275,7 @@ def test_invalid_member_id_is_rejected(tmp_path: Path) -> None:
 
 
 def test_endpoint_reports_missing_store(tmp_path: Path) -> None:
-    client, _store_ = _client(tmp_path, with_store=False)
+    client, _ = _client(tmp_path, with_store=False)
 
     response = client.get("/api/admin/council")
 
@@ -295,7 +297,7 @@ class _RecordingAgent:
 
 def test_saving_a_second_member_activates_the_council_live(tmp_path: Path) -> None:
     """Değişikliğin etkili olması için uygulamayı yeniden başlatmak gerekmez."""
-    client, _store_ = _client(tmp_path)
+    client, _ = _client(tmp_path)
     agent = _RecordingAgent()
     client.app.state.agent_service = agent
 
@@ -320,7 +322,7 @@ def test_saving_a_second_member_activates_the_council_live(tmp_path: Path) -> No
 
 def test_dropping_below_the_minimum_dismantles_the_council(tmp_path: Path) -> None:
     """Yarım bir Council yerine tek-LLM davranışına dönülür."""
-    client, _store_ = _client(tmp_path)
+    client, _ = _client(tmp_path)
     agent = _RecordingAgent()
     client.app.state.agent_service = agent
 

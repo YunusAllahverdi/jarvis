@@ -3,6 +3,8 @@
 import ast
 import math
 import operator
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 from pydantic import Field, field_validator
 
@@ -42,7 +44,7 @@ class CalculatorTool(Tool[CalculatorInput]):
 class _SafeExpressionEvaluator:
     """Sadece sayısal sabitler ve sınırlı aritmetik operatörleri kabul eder."""
 
-    _binary_operators = {
+    _binary_operators: ClassVar[dict[type[ast.operator], Callable[..., Any]]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -51,7 +53,10 @@ class _SafeExpressionEvaluator:
         ast.Mod: operator.mod,
         ast.Pow: operator.pow,
     }
-    _unary_operators = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+    _unary_operators: ClassVar[dict[type[ast.unaryop], Callable[..., Any]]] = {
+        ast.UAdd: operator.pos,
+        ast.USub: operator.neg,
+    }
 
     @classmethod
     def evaluate(cls, expression: str) -> int | float:

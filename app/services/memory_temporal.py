@@ -113,9 +113,7 @@ class MemoryTemporalService:
         stored = self._store.add(record)
         return TemporalWriteResult(record=stored, invalidated_ids=invalidated_ids)
 
-    def _find_active_conflicts(
-        self, record: MemoryRecord, topic_key: str
-    ) -> list[MemoryRecord]:
+    def _find_active_conflicts(self, record: MemoryRecord, topic_key: str) -> list[MemoryRecord]:
         """Aynı memory_type ve aynı topic_key'e sahip, hâlâ etkin olan
         (silinmemiş, geçersizleştirilmemiş) kayıtları döndürür."""
         candidates = self._store.list_active(

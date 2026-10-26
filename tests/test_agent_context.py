@@ -29,6 +29,7 @@ from app.agent.context import (
     ContextBudget,
     ContextBuilder,
 )
+from app.core.chat import ChatMessage
 from app.learning.sqlite_trait_store import SQLiteUserTraitStore
 from app.learning.trait import TraitSource, TraitType, UserTrait
 from app.memory.experience import Experience
@@ -40,7 +41,6 @@ from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry, register_context_tools
-from app.core.chat import ChatMessage
 
 _NOW = datetime(2026, 8, 26, 20, 0, tzinfo=UTC)
 _READ_ONLY = {PermissionLevel.READ}
@@ -161,7 +161,7 @@ class TestDegradedSources:
 
     def test_failing_memory_source_degrades_gracefully(self) -> None:
         class _RaisingRetrieval:
-            def retrieve(self, query, **kwargs):  # noqa: ANN001, ANN003
+            def retrieve(self, query, **kwargs):
                 raise RuntimeError("memory backend down")
 
         context = _builder(memory_retrieval=_RaisingRetrieval()).build("merhaba", now=_NOW)
@@ -171,16 +171,16 @@ class TestDegradedSources:
 
     def test_failing_experience_source_degrades_gracefully(self) -> None:
         class _RaisingExperienceStore:
-            def add(self, experience):  # noqa: ANN001, ANN201
+            def add(self, experience):
                 return experience
 
-            def get(self, experience_id):  # noqa: ANN001, ANN201
+            def get(self, experience_id):
                 return None
 
-            def list_by_session(self, session_id, *, limit=50):  # noqa: ANN001
+            def list_by_session(self, session_id, *, limit=50):
                 raise RuntimeError("experience backend down")
 
-            def list_recent(self, *, limit=50, before=None):  # noqa: ANN001
+            def list_recent(self, *, limit=50, before=None):
                 raise RuntimeError("experience backend down")
 
         context = _builder(experience_store=_RaisingExperienceStore()).build(
@@ -192,7 +192,7 @@ class TestDegradedSources:
 
     def test_failing_user_model_degrades_gracefully(self) -> None:
         class _RaisingUserModel:
-            def list_traits(self, **kwargs):  # noqa: ANN003, ANN201
+            def list_traits(self, **kwargs):
                 raise RuntimeError("user model down")
 
         context = _builder(user_model=_RaisingUserModel()).build("merhaba", now=_NOW)
@@ -202,10 +202,10 @@ class TestDegradedSources:
 
     def test_failing_conversation_store_degrades_gracefully(self) -> None:
         class _RaisingConversationStore:
-            def get_or_create(self, session_id=None):  # noqa: ANN001, ANN201
+            def get_or_create(self, session_id=None):
                 raise RuntimeError("conversation store down")
 
-            def append_messages(self, session_id, messages):  # noqa: ANN001
+            def append_messages(self, session_id, messages):
                 return None
 
         context = _builder(conversation_store=_RaisingConversationStore()).build(
@@ -217,8 +217,8 @@ class TestDegradedSources:
 
     def test_every_source_failing_still_returns_a_usable_context(self) -> None:
         class _Boom:
-            def __getattr__(self, name):  # noqa: ANN001, ANN204
-                def _raise(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            def __getattr__(self, name):
+                def _raise(*args, **kwargs):
                     raise RuntimeError("down")
 
                 return _raise
@@ -313,7 +313,7 @@ class TestToolDiscovery:
 
     def test_failing_registry_yields_no_tools_instead_of_raising(self) -> None:
         class _RaisingRegistry:
-            def list_tools(self):  # noqa: ANN201
+            def list_tools(self):
                 raise RuntimeError("registry down")
 
         context = _builder(tool_registry=_RaisingRegistry()).build("merhaba", now=_NOW)
@@ -332,9 +332,7 @@ class TestSessionScopedExperiences:
         store.add(_exp(day=20, session_id="other", message="başka oturum"))
         store.add(_exp(day=21, session_id="sess-1", message="bu oturum"))
 
-        context = _builder(experience_store=store).build(
-            "merhaba", session_id="sess-1", now=_NOW
-        )
+        context = _builder(experience_store=store).build("merhaba", session_id="sess-1", now=_NOW)
 
         assert [e.user_message for e in context.experiences] == ["bu oturum"]
 

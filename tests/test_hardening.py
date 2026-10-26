@@ -15,9 +15,8 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
-import pytest
+from fastapi.testclient import TestClient
 
-from app.adapters.llm.base import LLMUnavailableError
 from app.config.settings import Settings
 from app.core.chat import ChatMessage, LLMResponse, ToolDefinition
 from app.main import create_app
@@ -46,12 +45,10 @@ from app.tools.base import PermissionLevel
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 
-from fastapi.testclient import TestClient
-
-
 # ---------------------------------------------------------------------------
 # Yardımcı sahte nesneler
 # ---------------------------------------------------------------------------
+
 
 class _SimpleFakeProvider:
     """Testlerde LLM sunucusu olmadan çalışmak için en sade fake."""
@@ -110,6 +107,7 @@ def _run(coro):  # type: ignore[no-untyped-def]
 # 1. ConversationStore Protocol soyutlaması
 # ---------------------------------------------------------------------------
 
+
 def test_in_memory_store_satisfies_conversation_store_protocol() -> None:
     """InMemoryConversationStore, ConversationStore Protocol'ünü karşılamalı."""
     store = InMemoryConversationStore()
@@ -122,6 +120,7 @@ def test_conversation_store_protocol_rejects_non_compliant_object() -> None:
     class _Missing:
         def get_or_create(self, session_id=None):  # type: ignore[override]
             ...
+
         # append_messages eksik
 
     assert not isinstance(_Missing(), ConversationStore)
@@ -175,6 +174,7 @@ def test_create_app_accepts_custom_conversation_store() -> None:
 # ---------------------------------------------------------------------------
 # 2. PromptProvider soyutlaması + önbellek
 # ---------------------------------------------------------------------------
+
 
 def test_system_prompt_loader_satisfies_prompt_provider_protocol() -> None:
     """SystemPromptLoader, PromptProvider Protocol'ünü karşılamalı."""
@@ -234,6 +234,7 @@ def test_orchestrator_accepts_custom_prompt_provider() -> None:
 # ---------------------------------------------------------------------------
 # 3. Konuşma bağlamı mesaj sınırı
 # ---------------------------------------------------------------------------
+
 
 def test_context_limit_trims_history_sent_to_llm() -> None:
     """Limit=2 olduğunda LLM'e en fazla 2 geçmiş mesaj gönderilmeli (system hariç)."""
@@ -351,6 +352,7 @@ def test_create_app_passes_context_limit_from_settings() -> None:
 # 4. Ollama AsyncClient lifecycle
 # ---------------------------------------------------------------------------
 
+
 def test_ollama_provider_creates_persistent_client() -> None:
     """OllamaProvider, her istek için yeni client yerine tek bir client kullanmalı."""
     from app.adapters.llm.ollama import OllamaProvider
@@ -399,6 +401,7 @@ def test_app_lifespan_closes_ollama_provider() -> None:
 # ---------------------------------------------------------------------------
 # 5. Memory modülü arayüz içe aktarmaları
 # ---------------------------------------------------------------------------
+
 
 def test_memory_base_models_are_importable() -> None:
     """Tüm temel bellek modelleri paketten içe aktarılabilmeli."""
