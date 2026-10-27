@@ -26,6 +26,7 @@ const PLACEHOLDERS = {
   checkpoints: "Jarvis'e söyle: \"plan.md için geri alma noktası aç\"",
   calendar: "Jarvis'e söyle: \"Cuma 15:00 diş hekimi, 45 dk\"",
   reminders: "Jarvis'e söyle: \"Yarın faturayı öde — yüksek öncelik\"",
+  capabilities: "Jarvis'e söyle: \"Web tarayıcı yeteneğini aç\"",
 };
 
 export function CommandBar({ panel, onDone }) {

@@ -22,6 +22,7 @@ const ACTIONS = [
   { id: "panel-diag",       label: "Cowork › Tanılama",                 to: "/cowork?panel=diagnostics" },
   { id: "panel-terminal",   label: "Cowork › Terminal",                 to: "/cowork?panel=terminal" },
   { id: "panel-calculator", label: "Cowork › Hesap Makinesi",           to: "/cowork?panel=calculator" },
+  { id: "panel-capabilities",label: "Cowork › Yetenekler",              to: "/cowork?panel=capabilities" },
 ];
 
 export default function CommandPalette() {

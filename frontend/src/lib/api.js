@@ -237,6 +237,15 @@ export const api = {
   upsertMember: (id, m) => http.put("/admin/council/members/" + id, m).then((r) => r.data),
   deleteMember: (id) => http.delete("/admin/council/members/" + id).then((r) => r.data),
 
+  /* ── yetenek kaydı ── */
+
+  // Yönetim yüzü: sağlayıcı ve araç listesi + izin override'ları.
+  getCapabilities: () => http.get("/admin/capabilities").then((r) => r.data),
+  // `allow_downgrade` yalnızca kullanıcı açıkça onayladığında true geçilir;
+  // DANGEROUS düşürme sunucuda deterministik olarak reddedilir.
+  setToolOverride: (name, body) =>
+    http.put("/admin/capabilities/tools/" + name, body).then((r) => r.data),
+
   /* ── ajan panel kanalı ── */
 
   pollUIActions: (session_id) =>

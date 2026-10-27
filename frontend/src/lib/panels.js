@@ -1,7 +1,7 @@
 // Shared panel registry — used by Cowork window, Dock and command palette.
 import {
   StickyNote, ShieldCheck, Users, Cpu, Database, Code2, History, Activity, Terminal as TermIcon, Calculator as CalcIcon,
-  CalendarDays, ListChecks, Clock3, CloudSun, Languages,
+  CalendarDays, ListChecks, Clock3, CloudSun, Languages, Boxes,
 } from "lucide-react";
 import NotesPanel from "@/panels/NotesPanel";
 import ApprovalsPanel from "@/panels/ApprovalsPanel";
@@ -18,6 +18,7 @@ import RemindersPanel from "@/panels/RemindersPanel";
 import ClockPanel from "@/panels/ClockPanel";
 import WeatherPanel from "@/panels/WeatherPanel";
 import TranslatePanel from "@/panels/TranslatePanel";
+import CapabilitiesPanel from "@/panels/CapabilitiesPanel";
 
 export const PANELS = {
   notes:       { title: "Notlar",          icon: StickyNote,   comp: NotesPanel,       color: "#f5b400" },
@@ -35,6 +36,7 @@ export const PANELS = {
   terminal:    { title: "Terminal",        icon: TermIcon,     comp: TerminalPanel,    color: "#3a3a3c" },
   calculator:  { title: "Hesap Makinesi",  icon: CalcIcon,     comp: CalculatorPanel,  color: "#8e8e93" },
   provider:    { title: "Ayarlar",         icon: Cpu,          comp: ProviderPanel,    color: "#5e5ce6" },
+  capabilities:{ title: "Yetenekler",      icon: Boxes,        comp: CapabilitiesPanel, color: "#30d158" },
 };
 
 export const DEFAULT_TABS = ["notes", "calendar", "reminders"];
