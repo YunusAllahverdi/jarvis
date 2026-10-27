@@ -26,7 +26,13 @@ from pydantic import Field
 
 from app.security.fencing import fence
 from app.security.network import NetworkGuard, UrlNotAllowedError
-from app.tools.base import PermissionLevel, Tool, ToolExecutionError, ToolInput
+from app.tools.base import (
+    PermissionLevel,
+    RiskTag,
+    Tool,
+    ToolExecutionError,
+    ToolInput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +111,17 @@ class FetchUrlTool(Tool[FetchUrlInput]):
     )
     permission = PermissionLevel.WRITE
     input_model = FetchUrlInput
+    category = "ağ"
+    risk_tags = frozenset({RiskTag.NETWORK})
+    untrusted_output = True
+    """Getirilen içerik güvenilmez DIŞ veridir.
+
+    `ToolExecutor` bu sonucu `{"untrusted": true, "source", "content"}` zarfına
+    alır ve sistem promptu modelden bunu yalnızca veri saymasını ister: bir web
+    sayfası, modele talimat gibi okunacak metin yazmak için en kolay yerdir.
+    """
+
+    timeout_seconds = DEFAULT_TIMEOUT_SECONDS
 
     def __init__(
         self,

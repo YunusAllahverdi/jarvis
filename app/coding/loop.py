@@ -406,10 +406,10 @@ class CodingLoop:
             ToolDescriptor(
                 name=tool.name,
                 description=tool.description,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 input_schema=tool.definition.input_schema,
                 requires_confirmation=(
-                    policy.decide(tool.permission) is not PermissionDecision.ALLOW
+                    policy.decide(tool.effective_permission) is not PermissionDecision.ALLOW
                 ),
             )
             for tool in tools

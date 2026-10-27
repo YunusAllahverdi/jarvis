@@ -1,8 +1,10 @@
 """Registry tabanlı permission, input validation ve tool çalıştırma katmanı."""
 
+import asyncio
 import json
 import logging
 import time
+import unicodedata
 from collections.abc import Iterable
 from typing import Any
 
@@ -11,10 +13,48 @@ from pydantic import BaseModel
 from app.core.chat import ChatMessage, ToolCall
 from app.security.audit import AuditAction, AuditEvent, AuditLog, AuditOutcome, safe_record
 from app.security.permissions import PermissionDecision, ToolPermissionPolicy
-from app.tools.base import PermissionLevel, ToolExecutionError, ToolInputValidationError
+from app.tools.base import PermissionLevel, Tool, ToolExecutionError, ToolInputValidationError
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TOOL_TIMEOUT_SECONDS = 120.0
+"""Bir araç kendi `timeout_seconds`'ını beyan etmediyse uygulanan üst sınır.
+
+Sınır olmadan bir araç (ör. yanıt vermeyen bir dış servis) tüm turu süresiz
+bloklayabilirdi. Araç başına beyan edilen değer bunu geçersiz kılar.
+"""
+
+MAX_RESULT_CHARS = 100_000
+"""Bir araç çıktısının kırpılacağı üst karakter sayısı (kendi sınırı yoksa).
+
+`max_output_chars` beyan etmeyen araçlar için son bir emniyet supabıdır:
+kırpma olmasaydı tek bir çağrı bağlam penceresini doldurabilirdi.
+"""
+
+
+def _sanitize_text(text: str) -> str:
+    """Kontrol karakterlerini temizler; yeni satır ve sekmeyi korur.
+
+    NUL ve benzeri kontrol karakterleri hem log hem model bağlamı için
+    sorunludur; bazı istemciler bunları görünmez biçimde birleştirip metnin
+    anlamını kaydırabilir. Yeni satır ve sekme okunabilirlik için korunur.
+    """
+
+    return "".join(ch if ch in "\n\t" or unicodedata.category(ch) != "Cc" else " " for ch in text)
+
+
+def _truncate(value: Any, limit: int) -> tuple[Any, bool]:
+    """Bir sonucu karakter sınırına göre kırpar ve kırpılıp kırpılmadığını döndürür.
+
+    Kırpma JSON temsiline uygulanır: sözlüğün tek bir alanını kesmek yapıyı
+    bozabilirdi; modelin gördüğü şey zaten JSON'dur.
+    """
+
+    rendered = json.dumps(value, ensure_ascii=False, default=str)
+    if len(rendered) <= limit:
+        return value, False
+    return rendered[:limit], True
 
 
 class ToolExecutionResult(BaseModel):
@@ -40,6 +80,13 @@ class ToolExecutionResult(BaseModel):
     ayırt edilebilsin diye ayrı bir alan olarak taşınır.
     """
 
+    truncated: bool = False
+    """Sonuç, aracın `max_output_chars` sınırına göre kırpıldı mı.
+
+    Kırpma SESSİZ olmamalıdır: kırpılmış bir çıktıyı tam sanan model yanlış
+    bir sonuca varabilir.
+    """
+
     def as_chat_message(self) -> ChatMessage:
         """Ollama ve diğer provider'ların anlayabileceği tool-result mesajını üretir."""
 
@@ -48,6 +95,8 @@ class ToolExecutionResult(BaseModel):
             payload["result"] = self.data
         else:
             payload["error"] = {"code": self.error_code, "message": self.error_message}
+        if self.truncated:
+            payload["truncated"] = True
         return ChatMessage(
             role="tool",
             tool_name=self.tool_name,
@@ -164,7 +213,7 @@ class ToolExecutor:
                 session_id=session_id,
             )
 
-        decision = self._policy.decide(tool.permission)
+        decision = self._policy.decide(tool.effective_permission)
 
         if decision is PermissionDecision.DENY:
             return self._finish(
@@ -173,10 +222,10 @@ class ToolExecutor:
                     tool_name=call.name,
                     success=False,
                     error_code="permission_denied",
-                    error_message=f"{tool.permission} izni bu oturumda etkin değil.",
+                    error_message=(f"{tool.effective_permission} izni bu oturumda etkin değil."),
                 ),
                 outcome=AuditOutcome.BLOCKED,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 decision=decision,
                 session_id=session_id,
             )
@@ -190,12 +239,12 @@ class ToolExecutor:
                     requires_approval=True,
                     error_code="approval_required",
                     error_message=(
-                        f"{tool.permission} izinli '{tool.name}' aracı için kullanıcı "
+                        f"{tool.effective_permission} izinli '{tool.name}' aracı için kullanıcı "
                         "onayı gerekiyor."
                     ),
                 ),
                 outcome=AuditOutcome.PENDING_APPROVAL,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 decision=decision,
                 session_id=session_id,
             )
@@ -212,14 +261,34 @@ class ToolExecutor:
                     error_message="Tool argument'leri şemaya uymuyor.",
                 ),
                 outcome=AuditOutcome.FAILURE,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 decision=decision,
                 session_id=session_id,
             )
 
         started = time.perf_counter()
+        timeout = tool.timeout_seconds or DEFAULT_TOOL_TIMEOUT_SECONDS
         try:
-            data = await tool.execute(tool_input)
+            data = await asyncio.wait_for(tool.execute(tool_input), timeout=timeout)
+        except TimeoutError:
+            logger.warning(
+                "tool_execution_timeout",
+                extra={"tool_name": tool.name, "timeout_seconds": timeout},
+            )
+            return self._finish(
+                call,
+                ToolExecutionResult(
+                    tool_name=call.name,
+                    success=False,
+                    error_code="tool_timeout",
+                    error_message=(f"'{tool.name}' aracı {timeout:g} saniye içinde yanıt vermedi."),
+                ),
+                outcome=AuditOutcome.FAILURE,
+                permission=tool.effective_permission,
+                decision=decision,
+                session_id=session_id,
+                started=started,
+            )
         except ToolExecutionError as exc:
             return self._finish(
                 call,
@@ -230,7 +299,7 @@ class ToolExecutor:
                     error_message=str(exc),
                 ),
                 outcome=AuditOutcome.FAILURE,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 decision=decision,
                 session_id=session_id,
                 started=started,
@@ -246,21 +315,62 @@ class ToolExecutor:
                     error_message="Tool çalıştırılırken beklenmeyen bir hata oluştu.",
                 ),
                 outcome=AuditOutcome.FAILURE,
-                permission=tool.permission,
+                permission=tool.effective_permission,
                 decision=decision,
                 session_id=session_id,
                 started=started,
             )
 
+        processed, truncated = self._post_process(tool, data)
         return self._finish(
             call,
-            ToolExecutionResult(tool_name=call.name, success=True, data=data),
+            ToolExecutionResult(
+                tool_name=call.name,
+                success=True,
+                data=processed,
+                truncated=truncated,
+            ),
             outcome=AuditOutcome.SUCCESS,
-            permission=tool.permission,
+            permission=tool.effective_permission,
             decision=decision,
             session_id=session_id,
             started=started,
         )
+
+    @staticmethod
+    def _post_process(tool: Tool[Any], data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Araç çıktısını sınırlar, temizler ve gerekirse güvenilmez olarak sarar.
+
+        Üç iş TEK yerde yapılır çünkü üçü de "modele ne gidecek" sorusunun
+        parçasıdır ve ayrı yerlere dağılsalardı biri unutulabilirdi.
+        """
+
+        if tool.untrusted_output:
+            # Güvenilmez çıktı çitlenir ve bir zarf içinde verilir: model
+            # buradakini talimat değil VERİ saymalıdır.
+            content = data.get("content") if isinstance(data, dict) else None
+            body = (
+                content
+                if isinstance(content, str)
+                else json.dumps(data, ensure_ascii=False, default=str)
+            )
+            payload: dict[str, Any] = {
+                "untrusted": True,
+                "source": tool.source,
+                "content": _sanitize_text(body),
+            }
+            if isinstance(data, dict):
+                # Güvenilmez olmayan üst veri (url, status_code) kaybolmasın.
+                payload.update({key: value for key, value in data.items() if key != "content"})
+            processed: dict[str, Any] = payload
+        else:
+            processed = data
+
+        limit = tool.max_output_chars or MAX_RESULT_CHARS
+        result, truncated = _truncate(processed, limit)
+        if isinstance(result, dict):
+            return result, truncated
+        return {"content": result}, truncated
 
     def _finish(
         self,

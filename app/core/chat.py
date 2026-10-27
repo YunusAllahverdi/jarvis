@@ -8,11 +8,34 @@ MessageRole = Literal["system", "user", "assistant", "tool"]
 
 
 class ToolDefinition(BaseModel):
-    """Bir sağlayıcıya sunulabilecek araç sözleşmesi."""
+    """Bir sağlayıcıya sunulabilecek araç sözleşmesi.
+
+    İlk üç alan (`name`, `description`, `input_schema`) LLM'e GİDEN şemadır ve
+    sağlayıcı serializasyonu yalnızca onları seçer. Kalan alanlar araç
+    meta verisidir; arayüz ve denetim için taşınır, istemi şişirmez.
+    """
 
     name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     description: str = Field(min_length=1, max_length=500)
     input_schema: dict[str, Any]
+
+    source: str = "builtin"
+    """Aracı sağlayan aile (bkz. `Tool.source`)."""
+
+    category: str = ""
+    """İnsan tarafından okunabilir gruplama etiketi."""
+
+    risk_tags: tuple[str, ...] = ()
+    """Aracın dokunduğu risk aileleri (bkz. `RiskTag`)."""
+
+    untrusted_output: bool = False
+    """Aracın çıktısı güvenilmez dış veri mi."""
+
+    max_output_chars: int | None = None
+    """Çıktının modele taşınacak üst karakter sınırı."""
+
+    timeout_seconds: float | None = None
+    """Aracın çalışabileceği en uzun süre."""
 
 
 class ToolCall(BaseModel):

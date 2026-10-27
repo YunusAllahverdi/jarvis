@@ -14,9 +14,20 @@ from app.security.approvals import (
     ApprovalService,
     ApprovalStatus,
 )
-from app.security.permissions import PermissionDecision, ToolPermissionPolicy
+from app.security.permissions import (
+    AUDIT_PERMISSION_DOWNGRADE,
+    AUDIT_TOOL_OVERRIDE,
+    OverridePlan,
+    PermissionDecision,
+    ToolOverride,
+    ToolPermissionPolicy,
+    plan_override,
+)
+from app.security.tool_overrides import ToolOverrideStore
 
 __all__ = [
+    "AUDIT_PERMISSION_DOWNGRADE",
+    "AUDIT_TOOL_OVERRIDE",
     "ApprovalAlreadyDecidedError",
     "ApprovalError",
     "ApprovalExpiredError",
@@ -24,6 +35,10 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalService",
     "ApprovalStatus",
+    "OverridePlan",
     "PermissionDecision",
+    "ToolOverride",
+    "ToolOverrideStore",
     "ToolPermissionPolicy",
+    "plan_override",
 ]

@@ -48,8 +48,7 @@ from app.memory.sqlite_experience_store import SQLiteExperienceStore
 from app.memory.sqlite_store import SQLiteMemoryStore
 from app.memory.store import MemoryStore
 from app.notes.store import NoteStore
-from app.plugins import BUILTIN_PLUGINS, PluginContext, PluginRegistry
-from app.plugins.example import ExamplePlugin
+from app.plugins import PluginContext
 from app.security.approvals import ApprovalService
 from app.security.audit import AuditLog, InMemoryAuditLog, SQLiteAuditLog
 from app.security.auth import ApiTokenMiddleware
@@ -58,6 +57,7 @@ from app.security.commands import CommandNotAllowedError, CommandPolicy
 from app.security.network import NetworkGuard
 from app.security.paths import PathGuard
 from app.security.permissions import ToolPermissionPolicy
+from app.security.tool_overrides import ToolOverrideStore
 from app.services.agent_service import AgentService
 from app.services.coding_service import CodingService
 from app.services.conversation import ConversationStore, InMemoryConversationStore
@@ -74,6 +74,8 @@ from app.services.speech import SpeechService
 from app.services.sqlite_conversation import SQLiteConversationStore
 from app.services.user_model_service import UserModelService
 from app.tools.base import PermissionLevel
+from app.tools.builtin_providers import build_builtin_providers, default_provider
+from app.tools.capabilities import CapabilityRegistry
 from app.tools.defaults import build_default_tool_registry
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
@@ -465,43 +467,83 @@ def _build_agent_stack(
     council_service: CouncilService | None = None,
     council_gate: CouncilGate | None = None,
     audit_log: AuditLog | None = None,
-    workspace_guard: PathGuard | None = None,
-    workspace_writable: bool = False,
-    change_journal: ChangeJournal | None = None,
     approval_service: ApprovalService | None = None,
     policy_boundary: ToolPermissionPolicy,
-    note_store: NoteStore | None = None,
-    notes_writable: bool = True,
-    network_guard: NetworkGuard | None = None,
-    research_timeout_seconds: float = 20.0,
-    ui_action_bus: UIActionBus | None = None,
-    terminal_enabled: bool = False,
-    command_policy: CommandPolicy | None = None,
-    terminal_timeout_seconds: float = 60.0,
-    timezone_name: str | None = None,
-    maps_api_key: str = "",
-    settings: Settings | None = None,
+    capability_registry: CapabilityRegistry,
 ) -> AgentService:
-    """Agent karar katmanını mevcut public servislerden kurar.
+    """Agent karar katmanını hazır bir yetenek kaydı üzerinden kurar.
 
     ÖNEMLİ — AYRI TOOL REGISTRY: Agent kendi `ToolRegistry` ÖRNEĞİNİ alır
     (ayrı bir soyutlama değil, aynı sınıfın ikinci örneği). Böylece agent'a
     eklenen `memory_search`/`user_profile` tool'ları, LLM'in normal sohbet
     sırasında gördüğü tool yüzeyini DEĞİŞTİRMEZ ve mevcut sohbet davranışı
-    bit düzeyinde korunur. İleride tek bir registry'de birleştirmek istenirse
-    bu, tek satırlık bir değişikliktir.
+    bit düzeyinde korunur.
 
-    Kaynak servisler isteğe bağlıdır: verilmeyen kaynak yalnızca ilgili
-    bağlam bölümünün boş kalmasına ve ilgili tool'un kaydedilmemesine yol açar.
+    YETENEK KAYDI: araçlar artık `CapabilityRegistry` üzerinden kurulur.
+    Kayıt ÇAĞIRAN tarafından (lifespan) kurulur ve buraya verilir; böylece
+    yönetim ucu aynı kaydı yeniden kurabilir ve iki paralel kayıt oluşmaz.
     """
-    agent_registry = build_default_tool_registry(timezone_name=timezone_name)
-    # Tüm yetenekler TEK bir yerden, eklenti kaydından eklenir. Sıra korunur;
-    # her eklenti varsayılan KAPALI'dır ve kaydettiği araçlar `policy_boundary`
-    # (ToolPermissionPolicy) + onay akışından geçer — burada atlanamaz.
-    active_settings = settings or get_settings()
+    context_builder = ContextBuilder(
+        tool_registry=capability_registry.registry,
+        policy=policy_boundary,
+        conversation_store=conversation_store,
+        memory_retrieval=memory_retrieval,
+        experience_store=experience_store,
+        user_model=user_model,
+    )
+    logger.info(
+        "agent_stack_built",
+        extra={
+            "tool_count": len(capability_registry.registry.list_tools()),
+            "provider_count": len(capability_registry.provider_ids),
+        },
+    )
+    return AgentService(
+        context_builder=context_builder,
+        policy=policy or RuleBasedDecisionPolicy(),
+        council_service=council_service,
+        council_gate=council_gate,
+        approval_service=approval_service,
+        runner=AgentRunner(
+            tool_executor=ToolExecutor(
+                capability_registry.registry, policy=policy_boundary, audit_log=audit_log
+            )
+        ),
+    )
+
+
+def _build_agent_capability_registry(
+    *,
+    settings: Settings,
+    timezone_name: str | None,
+    memory_retrieval: MemoryRetrievalService | None,
+    user_model: UserModelService | None,
+    workspace_guard: PathGuard | None,
+    workspace_writable: bool,
+    change_journal: ChangeJournal | None,
+    command_policy: CommandPolicy | None,
+    terminal_enabled: bool,
+    terminal_timeout_seconds: float,
+    note_store: NoteStore | None,
+    notes_writable: bool,
+    network_guard: NetworkGuard | None,
+    research_timeout_seconds: float,
+    ui_action_bus: UIActionBus | None,
+    maps_api_key: str,
+    policy: ToolPermissionPolicy,
+    override_store: ToolOverrideStore | None,
+) -> CapabilityRegistry:
+    """Agent için yetenek kaydını kurar (temel araçlar + eklentiler).
+
+    Kayıt, paylaşılan registry'yi YERİNDE doldurur ve `rebuild_sync()` ile
+    başlangıç araç yüzeyini oluşturur. Aynı kayıt daha sonra yönetim ucundan
+    yeniden kurulabilir; böylece iki paralel araç yüzeyi oluşmaz.
+    """
+
+    registry = build_default_tool_registry(timezone_name=timezone_name)
     plugin_context = PluginContext(
-        registry=agent_registry,
-        settings=active_settings,
+        registry=registry,
+        settings=settings,
         timezone_name=timezone_name,
         memory_retrieval=memory_retrieval,
         user_model=user_model,
@@ -518,34 +560,15 @@ def _build_agent_stack(
         ui_action_bus=ui_action_bus,
         maps_api_key=maps_api_key,
     )
-    plugin_registry = PluginRegistry([*BUILTIN_PLUGINS, ExamplePlugin()])
-    registrations = plugin_registry.apply(plugin_context)
-    registered = [name for reg in registrations for name in reg.tools]
-    context_builder = ContextBuilder(
-        tool_registry=agent_registry,
-        policy=policy_boundary,
-        conversation_store=conversation_store,
-        memory_retrieval=memory_retrieval,
-        experience_store=experience_store,
-        user_model=user_model,
+    capability_registry = CapabilityRegistry(
+        registry=registry,
+        providers=build_builtin_providers(plugin_context, timezone_name=timezone_name),
+        settings=settings,
+        override_store=override_store,
+        policy=policy,
     )
-    logger.info(
-        "agent_stack_built",
-        extra={
-            "context_tools": registered,
-            "tool_count": len(agent_registry.list_tools()),
-        },
-    )
-    return AgentService(
-        context_builder=context_builder,
-        policy=policy or RuleBasedDecisionPolicy(),
-        council_service=council_service,
-        council_gate=council_gate,
-        approval_service=approval_service,
-        runner=AgentRunner(
-            tool_executor=ToolExecutor(agent_registry, policy=policy_boundary, audit_log=audit_log)
-        ),
-    )
+    capability_registry.rebuild_sync()
+    return capability_registry
 
 
 class _ActiveCouncil(TypedDict):
@@ -618,6 +641,17 @@ def create_app(
         if tool_registry is not None
         else build_default_tool_registry(timezone_name=active_settings.timezone or None)
     )
+    # Yetenek kaydı: paylaşılan registry'yi sağlayıcılardan kurar. Sağlayıcılar
+    # başlangıçta yalnızca temel araçlardan oluşur; ağır/dış yetenekler
+    # (dosya, terminal, ağ, haritalar, eklentiler) `lifespan` içinde tam
+    # bağlamla kurulur. Bu kayıt TEK'tir ve `app.state` üzerinden yönetim
+    # ucuna açılır.
+    active_capability_registry = CapabilityRegistry(
+        registry=active_tool_registry,
+        providers=[default_provider(timezone_name=active_settings.timezone or None)],
+        settings=active_settings,
+    )
+    active_capability_registry.rebuild_sync()
 
     # Çağıran memory_service ve/veya memory_retrieval'i açıkça verdiyse hemen
     # kullanılır (I/O maliyetini zaten çağıran üstlenmiştir). Aksi halde —
@@ -817,6 +851,11 @@ def create_app(
             # üyelerin sessizce devam ettiğini görürdü.
             startup_council_store = CouncilMemberStore(_resolve_audit_db_path(active_settings))
             app_instance.state.council_member_store = startup_council_store
+            # Araç izin override'ları da aynı dosyayı paylaşır. Kayıt burada
+            # kurulur ve yetenek kaydına geç bağlanır: override'lar yalnızca
+            # kalıcı veritabanına dokunulan kurulumlarda geçerli olur.
+            startup_override_store = ToolOverrideStore(_resolve_audit_db_path(active_settings))
+            app_instance.state.tool_override_store = startup_override_store
             stored_service, stored_providers = _build_council_from_store(
                 active_settings, startup_council_store
             )
@@ -869,6 +908,32 @@ def create_app(
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
             # Kurulmamış olan kaynak None geçilir; agent bunu sorunsuz karşılar.
+            #
+            # YETENEK KAYDI BURADA KURULUR ve `app.state`'e konur: yönetim ucu
+            # (izin override'ları) AYNI kaydı yeniden kuracak, dolayısıyla iki
+            # paralel araç yüzeyi oluşmayacaktır.
+            agent_capabilities = _build_agent_capability_registry(
+                settings=active_settings,
+                timezone_name=active_settings.timezone or None,
+                memory_retrieval=app_instance.state.memory_retrieval,
+                user_model=app_instance.state.user_model_service,
+                workspace_guard=workspace_guard,
+                workspace_writable=active_settings.workspace_writable,
+                change_journal=app_instance.state.checkpoint_store,
+                command_policy=command_policy,
+                terminal_enabled=active_settings.terminal_enabled,
+                terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
+                note_store=getattr(app_instance.state, "note_store", None),
+                notes_writable=active_settings.notes_writable,
+                network_guard=app_instance.state.network_guard,
+                research_timeout_seconds=active_settings.research_timeout_seconds,
+                ui_action_bus=app_instance.state.ui_action_bus,
+                maps_api_key=active_settings.maps_api_key,
+                policy=agent_policy,
+                override_store=app_instance.state.tool_override_store,
+            )
+            app_instance.state.capability_registry = agent_capabilities
+
             startup_agent = _build_agent_stack(
                 # Sohbetle AYNI depo: ayrı örnekler olsaydı ajanın gördüğü
                 # geçmiş, kullanıcının gördüğünden farklı olurdu.
@@ -886,22 +951,9 @@ def create_app(
                 council_service=active_council["service"],
                 council_gate=active_council["gate"],
                 audit_log=startup_audit_log,
-                workspace_guard=workspace_guard,
-                change_journal=app_instance.state.checkpoint_store,
-                workspace_writable=active_settings.workspace_writable,
                 approval_service=app_instance.state.approval_service,
                 policy_boundary=agent_policy,
-                note_store=getattr(app_instance.state, "note_store", None),
-                notes_writable=active_settings.notes_writable,
-                network_guard=app_instance.state.network_guard,
-                research_timeout_seconds=active_settings.research_timeout_seconds,
-                ui_action_bus=app_instance.state.ui_action_bus,
-                terminal_enabled=active_settings.terminal_enabled,
-                command_policy=command_policy,
-                terminal_timeout_seconds=active_settings.terminal_timeout_seconds,
-                timezone_name=active_settings.timezone or None,
-                maps_api_key=active_settings.maps_api_key,
-                settings=active_settings,
+                capability_registry=agent_capabilities,
             )
             app_instance.state.agent_service = startup_agent
             app_instance.state.approval_executor = startup_agent.tool_executor
@@ -993,6 +1045,11 @@ def create_app(
     # Üye başına Council yapılandırması: diğer kalıcı depolarla aynı gerekçeyle
     # lifespan'de kurulur, o ana kadar None kalır ve yönetim ucu 503 döner.
     app.state.council_member_store = None
+    # Yetenek kaydı lifespan'de kurulur; o ana kadar temel araçlarla çalışır.
+    # Yönetim uçları None durumunda 503 döner.
+    app.state.capability_registry = active_capability_registry
+    # Araç izin override deposu da lifespan'de kurulur.
+    app.state.tool_override_store = None
     # Not deposu da lifespan'de kurulur; o ana kadar uç 503 döner.
     app.state.note_store = None
     # UI aksiyon kanalı bellek içidir ve hiçbir dosyaya dokunmaz, bu yüzden

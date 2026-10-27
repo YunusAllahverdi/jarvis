@@ -35,6 +35,19 @@ class ToolRegistry:
         with self._lock:
             return self._tools.pop(name, None)
 
+    def clear(self) -> None:
+        """Kayıtlı tüm tool'ları boşaltır.
+
+        Çalışma zamanında yeniden kurma (`CapabilityRegistry.rebuild`) için
+        gereklidir: registry örneği yürütücüler tarafından PAYLAŞILIR, bu
+        yüzden yeniden kurma onu yerinde güncellemelidir. Yeni bir örnek
+        üretilseydi, executor eski — ve artık güncellenmeyen — kopyayı tutmaya
+        devam ederdi.
+        """
+
+        with self._lock:
+            self._tools.clear()
+
     def get(self, name: str) -> Tool | None:
         """Yalnızca kayıtlı bir tool'u döndürür."""
 
