@@ -26,6 +26,8 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Geri alma (checkpoint / restore) | Çalışıyor |
 | Frontend (WebGL orb kabuğu) | Çalışıyor |
 | Sağlayıcı yönetim paneli (çalışma zamanında değiştirilebilir) | Çalışıyor |
+| Eklenti (plugin) altyapısı (yeni yetenekler tek yerden) | Çalışıyor, **varsayılan kapalı** |
+| Gözlemlenebilirlik (request-id, JSON log, tutarlı hata zarfı) | Çalışıyor |
 
 ## Güvenlik modeli
 
@@ -405,6 +407,24 @@ curl -X PUT localhost:8000/api/admin/council/members/uzak-model \
 Tüm ayarlar `JARVIS_` önekiyle ortam değişkenlerinden veya `.env` dosyasından okunur.
 Örnekler için `.env.example`. `.env` sürüm kontrolüne alınmaz ve ajan tarafından okunamaz.
 
+## Eklentiler (yeni yetenekler)
+
+Yeni araç ve entegrasyonlar (MCP, ses, wake word, Home Assistant, tarayıcı
+ajanı, bilgisayar kontrolü…) **tek bir yerden**, eklenti (plugin) arayüzüyle
+eklenir. Her eklenti **varsayılan kapalıdır**: adı `JARVIS_ENABLED_PLUGINS`
+listesinde geçmedikçe çalışmaz. Eklentinin kaydettiği araçlar, tıpkı yerleşik
+araçlar gibi mevcut `ToolPermissionPolicy` + onay akışından geçer; eklenti bu
+akışı atlayamaz.
+
+```dotenv
+# Örnek eklentiyi aç (example_echo aracını ekler)
+JARVIS_ENABLED_PLUGINS=["example"]
+```
+
+Kayıtlı yerleşik eklentiler: `context_tools`, `filesystem`, `notes`,
+`ui_actions`, `research`, `terminal`, `maps`, `example`. Yeni bir eklentinin
+nasıl yazılacağı için [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
 ## Docker
 
 `Dockerfile` uygulamayı `0.0.0.0:8000`'de çalıştıracak şekilde hazırdır ve
@@ -434,6 +454,7 @@ jarvis/
 │   ├── adapters/     # Harici sistem köprüleri (Ollama LLM provider)
 │   ├── config/       # Pydantic Settings
 │   ├── core/         # Ortak altyapı (structured logging)
+│   ├── plugins/      # Eklenti arayüzü: yeni yeteneklerin tek kayıt noktası
 │   ├── prompts/      # Sistem prompt metinleri
 │   └── tools/        # Araçlar: dosya, terminal, git, proje özeti, bağlam
 ├── frontend/         # React + Create React App / craco kabuk (WebGL orb)
