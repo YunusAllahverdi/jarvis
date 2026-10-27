@@ -1,3 +1,63 @@
-# Altyapı servisleri (LLM, Home Assistant, veritabanı vb.) henüz eklenmedi.
-# İleride servis tanımları bu dosyada, uygulama bağımlılıkları netleştikten sonra yer alacak.
-services: {}
+# Jarvis — yerel geliştirme/çalıştırma yığını.
+#
+#   docker compose up --build            # yalnızca backend (derlenmiş kabukla)
+#   docker compose --profile ollama up   # backend + yerel LLM (Ollama)
+#
+# Ollama OPSİYONELDİR ve bir profile arkasındadır: herkes yerel bir LLM
+# çalıştırmak istemez, ama isteyen tek bir bayrakla açar. Profil olmasaydı
+# Ollama imajı (birkaç GB) her `up` çağrısında indirilirdi.
+
+name: jarvis
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jarvis-backend:local
+    container_name: jarvis-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Konteyner içinden Ollama'ya servis adıyla erişilir; `127.0.0.1`
+      # yalnızca konteynerin kendi içini gösterir ve işe yaramaz.
+      JARVIS_OLLAMA_BASE_URL: http://ollama:11434
+      JARVIS_LOG_LEVEL: INFO
+      JARVIS_LOG_FORMAT: json
+      # Sunucu 0.0.0.0'a bağlandığı için dışarıdan erişim kilitli
+      # olmalıdır. Kendi token'ınızı verin; boş bırakmayın.
+      JARVIS_API_TOKEN: ${JARVIS_API_TOKEN:-}
+      JARVIS_TIMEZONE: ${JARVIS_TIMEZONE:-Europe/Istanbul}
+    volumes:
+      # Kalıcı bellek ve denetim kaydı: konteyner yeniden oluşturulsa bile
+      # Jarvis'in hatırladıkları ve yaptıklarının izi korunur.
+      - jarvis-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  # Opsiyonel yerel LLM. Yalnızca `--profile ollama` ile başlar.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jarvis-ollama
+    profiles: ["ollama"]
+    ports:
+      # Yerel makineden de erişilebilsin (ör. `ollama pull` ile model indirme).
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  jarvis-data:
+  ollama-models:

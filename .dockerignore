@@ -1,8 +1,39 @@
+# Docker derleme bağlamından çıkarılanlar.
+#
+# Amaç: imaja GİRMEMESİ gereken her şeyi dışarıda tutmak — sırlar, yerel
+# sanal ortamlar, önbellekler ve bağımlılıklar (imaj içinde yeniden kurulur).
+
+# Sürüm kontrolü ve yerel araç durumu
 .git
-.venv
-__pycache__
-.pytest_cache
+.github
+.gitignore
+
+# Sırlar — asla imaja girmemeli
 .env
+*.env
+!.env.example
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Frontend bağımlılıkları ve derleme çıktısı (imajda yeniden üretilir)
+frontend/node_modules
+frontend/build
+frontend/.cache
+
+# Geliştirme/test dosyaları — çalışma zamanı imajında gerekmez
 tests
 docs
-*.pyc
+design
+.agents
+.claude
