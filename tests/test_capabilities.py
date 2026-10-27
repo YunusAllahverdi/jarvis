@@ -502,3 +502,69 @@ class TestCapabilityEndpoints:
             client.get("/api/admin/capabilities", headers={"X-Admin-Token": "gizli"}).status_code
             == 200
         )
+
+
+# ---------------------------------------------------------------------------
+# 23-26. Yerleşik sağlayıcılar — gerçek eklenti mekanizmasıyla
+# ---------------------------------------------------------------------------
+
+
+def _builtin_registry(settings: Settings, **context_kwargs: Any) -> CapabilityRegistry:
+    """Gerçek `build_builtin_providers` üzerinden bir kayıt kurar."""
+
+    from app.plugins.base import PluginContext
+    from app.tools.builtin_providers import build_builtin_providers
+
+    context = PluginContext(registry=ToolRegistry(), settings=settings, **context_kwargs)
+    registry = CapabilityRegistry(
+        registry=ToolRegistry(),
+        providers=build_builtin_providers(context, timezone_name="Europe/Istanbul"),
+        settings=settings,
+        policy=ToolPermissionPolicy(allowed={PermissionLevel.READ, PermissionLevel.WRITE}),
+    )
+    registry.rebuild_sync()
+    return registry
+
+
+class TestBuiltinProviders:
+    def test_base_tools_are_always_present(self) -> None:
+        registry = _builtin_registry(_settings())
+        names = {tool.name for tool in registry.registry.list_tools()}
+        # Temel READ araçları her zaman açıktır (mevcut davranış).
+        assert {"get_time", "get_date", "calculator", "system_status"} <= names
+
+    def test_disabled_capability_family_registers_no_tools(self) -> None:
+        """Bayrak kapalıyken ilgili araçlar kayıtlı OLMAMALI."""
+        closed = _builtin_registry(_settings(research_enabled=False))
+        closed_names = {tool.name for tool in closed.registry.list_tools()}
+        assert "fetch_url" not in closed_names
+
+        from app.security.network import NetworkGuard
+
+        opened = _builtin_registry(
+            _settings(research_enabled=True),
+            network_guard=NetworkGuard(allowed_domains=[]),
+        )
+        opened_names = {tool.name for tool in opened.registry.list_tools()}
+        assert "fetch_url" in opened_names
+
+    def test_builtin_provider_reports_health(self) -> None:
+        registry = _builtin_registry(_settings())
+        snapshot = _run(registry.describe())
+        assert snapshot.errors == []
+        builtin = next(p for p in snapshot.providers if p.id == "builtin")
+        assert builtin.enabled is True
+        assert builtin.tool_count >= 4
+
+    def test_research_tool_is_marked_untrusted(self) -> None:
+        """Dış içerik sağlayan araç güvenilmez işaretli olmalı."""
+        from app.security.network import NetworkGuard
+
+        registry = _builtin_registry(
+            _settings(research_enabled=True),
+            network_guard=NetworkGuard(allowed_domains=[]),
+        )
+        tool = registry.registry.get("fetch_url")
+        assert tool is not None
+        assert tool.untrusted_output is True
+        assert "network" in tool.risk_tags
