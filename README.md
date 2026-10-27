@@ -27,6 +27,7 @@ Ses ve görüntü işleme, Home Assistant entegrasyonu ve bilgisayar kontrolü b
 | Frontend (WebGL orb kabuğu) | Çalışıyor |
 | Sağlayıcı yönetim paneli (çalışma zamanında değiştirilebilir) | Çalışıyor |
 | Eklenti (plugin) altyapısı (yeni yetenekler tek yerden) | Çalışıyor, **varsayılan kapalı** |
+| Yetenek kaydı (çok kaynaklı araç sağlayıcıları, izin override) | Çalışıyor |
 | Gözlemlenebilirlik (request-id, JSON log, tutarlı hata zarfı) | Çalışıyor |
 
 ## Güvenlik modeli
@@ -424,6 +425,28 @@ JARVIS_ENABLED_PLUGINS=["example"]
 Kayıtlı yerleşik eklentiler: `context_tools`, `filesystem`, `notes`,
 `ui_actions`, `research`, `terminal`, `maps`, `example`. Yeni bir eklentinin
 nasıl yazılacağı için [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
+## Yetenek kaydı
+
+Yeni araç aileleri (MCP sunucuları, Home Assistant, tarayıcı, bilgisayar
+kontrolü…) tek bir `ToolProvider` sözleşmesi üzerinden bağlanır; yerleşik
+araçlar da birer sağlayıcıdır. Kurulum `CapabilityRegistry`'de toplanır ve
+çalışma zamanında `rebuild()` ile yeniden kurulabilir — yeni bir sağlayıcı
+açmak için uygulamayı yeniden başlatmak gerekmez.
+
+Yönetim panelinden ("Yetenekler") araçlar açılıp kapatılabilir ve izin
+seviyeleri değiştirilebilir. İzin **yükseltme** serbesttir; **düşürme** yalnızca
+onay diyaloğuyla yapılır ve denetim kaydına `permission_downgrade` olarak
+yazılır; `DANGEROUS` asla düşürülemez. Kararlar SQLite'ta kalıcıdır.
+
+```dotenv
+# Örnek: salt-okunur yetenek özeti (kimlik doğrulaması gerektirmez)
+# GET /api/v1/capabilities
+# Yönetim yüzü (admin_token kuralına tabi):
+# GET /api/admin/capabilities
+```
+
+Ayrıntılar için [docs/tools.md](docs/tools.md).
 
 ## Docker
 

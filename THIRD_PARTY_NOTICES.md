@@ -52,4 +52,27 @@ lisanslarına tabidir (ağırlıklı olarak MIT).
 
 ---
 
+## Tasarım esin kaynakları (kod kopyalanmadı)
+
+Yetenek kaydı (parça 2) tasarlanırken aşağıdaki MIT lisanslı depolar
+incelendi. **Hiçbirinden kod kopyalanmadı ya da uyarlanmadı**; yalnızca
+kavramsal desenler (sağlayıcı/toolset soyutlaması, onay politikası, risk
+sınıflandırması) fikir olarak alındı ve bu deponun kendi mimarisine göre
+sıfırdan yazıldı. Bu yüzden bu dosyaların başına atıf başlığı eklenmedi ve
+kaynak kod bu depoya girmedi.
+
+| Depo | Lisans | İncelenen kısım | Alınan |
+|---|---|---|---|
+| [OpenHands software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) | MIT | `sdk/tool/`, `sdk/security/{risk,confirmation_policy,analyzer,llm_analyzer}.py` | Yalnızca desen (fikir) |
+| [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai) | MIT | `pydantic_ai/toolsets/` (Filtered/Prefixed/Combined) | Yalnızca desen (fikir) |
+| [openai/openai-agents-python](https://github.com/openai/openai-agents-python) | MIT | `src/agents/guardrail.py`, `src/agents/tool.py` | Yalnızca desen (fikir) |
+| [leon-ai/leon](https://github.com/leon-ai/leon) | MIT | `skills/` manifest yapısı | Yalnızca desen (fikir) |
+
+İleride bu depolardan fiilen kod uyarlanırsa, yukarıdaki şablona göre bir kayıt
+eklenmeli ve uyarlanan dosyanın başına
+`# Adapted from <repo> (<lisans>) — <url> @ <commit-sha>; değişiklikler: <kısa>`
+başlığı konmalıdır.
+
+---
+
 _Bu dosyada henüz bu depoya kopyalanmış üçüncü taraf kod kaydı yoktur._
