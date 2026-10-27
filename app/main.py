@@ -19,6 +19,7 @@ from app.api.errors import register_exception_handlers
 from app.api.routes.admin import router as admin_router
 from app.api.routes.agent import router as agent_router
 from app.api.routes.approvals import router as approvals_router
+from app.api.routes.capabilities import router as capabilities_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coding import router as coding_router
@@ -1103,6 +1104,7 @@ def create_app(
     app.include_router(speech_router, prefix="/api")
     app.include_router(ui_router, prefix="/api")
     app.include_router(admin_router, prefix="/api")
+    app.include_router(capabilities_router, prefix="/api")
 
     # Kabuk EN SON monte edilir: `/api` router'ları önce eşleşmelidir, aksi
     # hâlde kök altındaki her yol statik sunucuya gider ve API kaybolurdu.

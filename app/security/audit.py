@@ -37,6 +37,11 @@ class AuditAction(StrEnum):
     TOOL_CALL = "TOOL_CALL"
     APPROVAL_GRANTED = "APPROVAL_GRANTED"
     APPROVAL_REJECTED = "APPROVAL_REJECTED"
+    TOOL_OVERRIDE = "TOOL_OVERRIDE"
+    """Bir aracın aç/kapa ya da izin seviyesi değişikliği."""
+
+    PERMISSION_DOWNGRADE = "PERMISSION_DOWNGRADE"
+    """Bir aracın izin seviyesini DÜŞÜREN değişiklik — ayrı izlenir."""
 
 
 class AuditOutcome(StrEnum):
