@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/oil-oil/oil-ui",
+  "source_sha": "e3334bd5f6e700d21ac275b169ceee6495db9391",
+  "license": "MIT",
+  "vendored_from": "oil-oil/oil-ui (commit e3334bd5f6e7)",
+  "note": "UI tasarım skill'i: tasarım yönü keşfi, çoklu stil karşılaştırma, gerçek ekran görüntüsüyle görsel hiyerarşi cilalama. SKILL.md depo kökünde olduğu ve kendi `references/`, `scripts/`, `assets/` klasörlerine göreli başvurduğu için klasör bütün olarak korundu."
+}

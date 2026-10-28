@@ -13,7 +13,8 @@ Kapsam:
 10.  run_skill_script onaylandığında skill klasöründe çalışır
 11.  Skill çıktısı untrusted olarak işaretlenir
 12.  İlerici açıklama: prompt'a yalnızca ad + açıklama girer, gövde girmez
-13.  Vendorlanan 4 skill keşfedilir ve yüklenebilir
+13.  Vendorlanan skill'ler (parça 2'de 4, bu turda 43 daha) keşfedilir ve
+     yüklenebilir; her birinin lisansı, kaynağı ve SHA'sı doğrulanır
 14.  Sağlayıcı sağlık kontrolü istisna fırlatmaz
 15.  Uçlar: skill listesi ve override (enable/disable)
 """
@@ -57,7 +58,73 @@ from app.tools.registry import ToolRegistry
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = REPO_ROOT / "skills"
 
+# Parça 2'de vendorlanan ilk dört skill (tek klasörlük).
 VENDORED_SKILLS = ("anatomy", "answer-me-with-html", "geo-sleuth", "holmes")
+
+# "Daha fazla skill" turunda vendorlanan paketler. Paketler tek tek skill
+# klasörlerine DÜZLEŞTİRİLEREK eklendi; oil-ui ise kendi kök-göreli
+# referansları olduğu için bütün klasör olarak korundu.
+VENDORED_PACK_SKILLS = (
+    # t3dotgg/tstack
+    "babysit-pr",
+    "council",
+    "file-pr",
+    "full-send",
+    "full-stop",
+    "leaving-pr-comments",
+    "modernize",
+    "sol-loop",
+    "takeover",
+    # Jakeschincariol/founder-skill
+    "founder-board",
+    "founder-brand",
+    "founder-cfo",
+    "founder-competitors",
+    "founder-consumer",
+    "founder-launch",
+    "founder-marketing",
+    "founder-offer",
+    "founder-ops",
+    "founder-plan",
+    "founder-pricing",
+    # Jakeschincariol/replica-skill
+    "replica-architect",
+    "replica-backend",
+    "replica-brand",
+    "replica-build",
+    "replica-deploy",
+    "replica-design",
+    "replica-diff",
+    "replica-entrepreneur",
+    "replica-launch",
+    "replica-recon",
+    "replica-test",
+    # Jakeschincariol/youtube-agent-skill
+    "yt-audit",
+    "yt-chapters",
+    "yt-comment",
+    "yt-edit",
+    "yt-package",
+    "yt-plan",
+    "yt-retention",
+    "yt-script",
+    "yt-seo",
+    "yt-shorts",
+    "yt-viral",
+    # oil-oil/oil-ui
+    "oil-ui",
+)
+
+ALL_VENDORED_SKILLS = VENDORED_SKILLS + VENDORED_PACK_SKILLS
+
+# Her vendorlanan paketin beklenen kaynak deposu ve commit SHA'sı.
+VENDORED_SOURCES = {
+    "t3dotgg/tstack": "1085050f3baed1ac724caa4a8166145fb2ac88af",
+    "Jakeschincariol/founder-skill": "fd9385b0cfe1b96bebce3898fbd506d73eff5a9d",
+    "Jakeschincariol/replica-skill": "77c9436fb3d18c3d58169efb8caf4fe906b0dc51",
+    "Jakeschincariol/youtube-agent-skill": "a2feb2104981a375ffd4f87ee04f4f5344ac43c6",
+    "oil-oil/oil-ui": "e3334bd5f6e700d21ac275b169ceee6495db9391",
+}
 
 
 def _run(coro: Any) -> Any:
@@ -539,6 +606,108 @@ class TestVendoredSkills:
                 "BSD-3-CLAUSE",
                 "BSD-2-CLAUSE",
             }
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    def test_all_pack_skills_are_discovered(self) -> None:
+        """Paketlerden düzleştirilerek eklenen tüm skill'ler keşfedilmeli."""
+
+        discovered = {skill.name for skill in discover_skills([SKILLS_DIR])}
+        assert set(VENDORED_PACK_SKILLS) <= discovered
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    @pytest.mark.parametrize("name", VENDORED_PACK_SKILLS)
+    def test_pack_skill_is_loadable_and_licensed(self, name: str) -> None:
+        """Her yeni skill yüklenebilmeli; lisans + kaynak + SHA + LICENSE olmalı."""
+
+        catalog = SkillCatalog(discover_skills([SKILLS_DIR]))
+        tool = LoadSkillTool(catalog=catalog)
+
+        result = _run(tool.execute(tool.input_model(name=name)))
+
+        assert result["skill"] == name
+        assert result["content"].strip()
+        skill = catalog.get(name)
+        assert skill.info.license.upper() in {"MIT", "APACHE-2.0", "BSD-3-CLAUSE", "BSD-2-CLAUSE"}
+        assert skill.info.source.startswith("https://github.com/")
+        assert len(skill.info.source_sha) == 40
+        assert (skill.root / "LICENSE").is_file()
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    def test_pack_skill_provenance_matches_upstream(self) -> None:
+        """Her yeni skill doğru kaynak depoya ve commit SHA'sına işaret etmeli."""
+
+        catalog = SkillCatalog(discover_skills([SKILLS_DIR]))
+        for name in VENDORED_PACK_SKILLS:
+            skill = catalog.get(name)
+            source = skill.info.source.removeprefix("https://github.com/")
+            assert source in VENDORED_SOURCES, (name, source)
+            assert skill.info.source_sha == VENDORED_SOURCES[source], name
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    def test_all_vendored_skills_have_unique_slugs(self) -> None:
+        """Düzleştirme sonrası hiçbir iki skill aynı slug'ı paylaşmamalı."""
+
+        skills = discover_skills([SKILLS_DIR])
+        slugs = [skill.slug for skill in skills]
+        assert len(slugs) == len(set(slugs))
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    def test_pack_skill_scripts_are_approved_only_types(self) -> None:
+        """Vendorlanan skill script'leri yalnızca onaylı yorumlayıcı türlerinde olmalı.
+
+        `run_skill_script` yalnızca `.py`, `.mjs`, `.js` çalıştırır. Paketlerde
+        başka türde (ör. POSIX shell) bir script bulunursa bu bir GÜVENLİK
+        değil, işlevsellik notudur: çalıştırılamaz. Bu test hangi türlerin
+        geldiğini görünür kılar ve sessiz bir "çalışmıyor" durumunu engeller.
+        """
+
+        catalog = SkillCatalog(discover_skills([SKILLS_DIR]))
+        supported = {".py", ".mjs", ".js"}
+        unexpected: list[str] = []
+        for name in VENDORED_PACK_SKILLS:
+            root = catalog.get(name).root
+            scripts_dir = root / "scripts"
+            if not scripts_dir.is_dir():
+                continue
+            unexpected.extend(
+                f"{name}/{path.relative_to(root)}"
+                for path in scripts_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() not in supported
+            )
+        # Bilinen istisnalar: tstack/babysit-pr'deki POSIX shell script'i ve
+        # oil-ui'nin kendi `check_update.sh` yardımcısı. İkisi de `run_skill_script`
+        # ile ÇALIŞTIRILAMAZ; bu bilinçli bir işlevsellik sınırıdır.
+        assert set(unexpected) <= {
+            "babysit-pr/scripts/pr-wait",
+            "oil-ui/scripts/check_update.sh",
+        }, unexpected
+
+    @pytest.mark.skipif(not SKILLS_DIR.is_dir(), reason="skills/ klasörü yok")
+    def test_pack_skill_reference_files_are_readable(self) -> None:
+        """Bir paket skill'inin referans dosyası read_skill_file ile okunabilmeli."""
+
+        catalog = SkillCatalog(discover_skills([SKILLS_DIR]))
+        # founder-board'un referans dosyası vardır (lenses.md).
+        tool = ReadSkillFileTool(catalog=catalog)
+        registry = ToolRegistry()
+        registry.register(tool)
+        executor = ToolExecutor(
+            registry, policy=ToolPermissionPolicy(allowed={PermissionLevel.READ})
+        )
+
+        result = _run(
+            executor.execute(
+                ToolCall(
+                    name=tool.name,
+                    arguments={"name": "founder-board", "path": "lenses.md"},
+                )
+            )
+        )
+
+        assert result.success is True
+        assert result.data is not None
+        assert str(result.data["content"]).strip()
+        assert result.data.get("untrusted") is True
 
 
 # ---------------------------------------------------------------------------

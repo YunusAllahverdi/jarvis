@@ -146,6 +146,50 @@ Dış bir depodan skill alıyorsanız:
    `pyproject.toml`'da bir **opsiyonel extra** tanımlayın (ör.
    `skills-geo-sleuth`), böylece `pip install jarvis-local` şişmez.
 
+### Paket depoları (birden çok skill içeren kaynaklar)
+
+Bazı depolar tek bir skill değil, **bir paket** (birden çok skill klasörü)
+içerir. Bu durumda paketin skill klasörlerini `skills/` altına **düzleştirin**
+(her klasör doğrudan `skills/` altına gelsin), çünkü keşif yalnızca kökün bir
+alt seviyesini tarar:
+
+```bash
+# Paket kökünde `skills/foo/` gibi klasörler varsa:
+for d in /yol/paket/skills/*/; do cp -r "$d" "skills/$(basename "$d")"; done
+```
+
+İstisna: bir skill `SKILL.md`'sini depo kökünde tutuyor ve kendi alt
+klasörlerine (`references/`, `scripts/`, `assets/`) **göreli** başvuruyorsa
+(ör. `oil-ui`), o klasörü bütün olarak `skills/<ad>/` altına kopyalayın.
+
+Her düzleştirilmiş klasöre paketin `LICENSE`'ını ve kendi `.skill-source.json`
+dosyasını (paket deposu + commit SHA) ekleyin.
+
+## Vendorlanan skill'ler
+
+Aşağıdaki skill'ler dış kaynaklardan **değiştirilmeden** kopyalanmıştır
+(vendor). Hepsi MIT lisanslıdır; kaynak SHA'ları her klasördeki
+`.skill-source.json` içinde de kayıtlıdır.
+
+| Skill(ler) | Kaynak depo | Lisans | Commit SHA |
+|---|---|---|---|
+| `geo-sleuth` | Oldcircle/geo-sleuth | MIT | `9a29a51cbe890ff06fdf66ba4f74db6b2186d8f1` |
+| `holmes` | Oldcircle/holmes-skill | MIT | `66ac6d4730aacbb16ce544f586af95377d00fba8` |
+| `answer-me-with-html` | QingYunA/answer-me-with-html | MIT | `2fa51dfab5495839425bc2279fa8790cd3601e58` |
+| `anatomy` | wheresryan22/anatomy | MIT | `1482e8469b0a9e0d8cc18ea2740a01423d29ae80` |
+| `babysit-pr`, `council`, `file-pr`, `full-send`, `full-stop`, `leaving-pr-comments`, `modernize`, `sol-loop`, `takeover` | t3dotgg/tstack | MIT | `1085050f3baed1ac724caa4a8166145fb2ac88af` |
+| `founder-board`, `founder-brand`, `founder-cfo`, `founder-competitors`, `founder-consumer`, `founder-launch`, `founder-marketing`, `founder-offer`, `founder-ops`, `founder-plan`, `founder-pricing` | Jakeschincariol/founder-skill | MIT | `fd9385b0cfe1b96bebce3898fbd506d73eff5a9d` |
+| `replica-architect`, `replica-backend`, `replica-brand`, `replica-build`, `replica-deploy`, `replica-design`, `replica-diff`, `replica-entrepreneur`, `replica-launch`, `replica-recon`, `replica-test` | Jakeschincariol/replica-skill | MIT | `77c9436fb3d18c3d58169efb8caf4fe906b0dc51` |
+| `yt-audit`, `yt-chapters`, `yt-comment`, `yt-edit`, `yt-package`, `yt-plan`, `yt-retention`, `yt-script`, `yt-seo`, `yt-shorts`, `yt-viral` | Jakeschincariol/youtube-agent-skill | MIT | `a2feb2104981a375ffd4f87ee04f4f5344ac43c6` |
+| `oil-ui` | oil-oil/oil-ui | MIT | `e3334bd5f6e700d21ac275b169ceee6495db9391` |
+
+Tam kayıt (telif, alınan dosyalar, notlar) `THIRD_PARTY_NOTICES.md`'dedir.
+
+> Not: `babysit-pr/scripts/pr-wait` (POSIX shell) ve `oil-ui/scripts/check_update.sh`
+> desteklenen yorumlayıcı türlerinde (`.py`, `.mjs`, `.js`) olmadığı için
+> `run_skill_script` ile **çalıştırılamaz**. Bu bilinçli bir işlevsellik
+> sınırıdır; güvenlik açığı değildir.
+
 ## Skill'leri açma/kapatma
 
 Yetenek panelinde (**Yetenek Kaydı → Skill'ler**) her skill tek tek açılıp

@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/t3dotgg/tstack",
+  "source_sha": "1085050f3baed1ac724caa4a8166145fb2ac88af",
+  "license": "MIT",
+  "vendored_from": "t3dotgg/tstack (commit 1085050f3bae)",
+  "note": "Günlük PR iş akışı skill'leri (full-send, babysit-pr, council, ...). Depo `skills/` altındaki klasörler düzleştirilerek kopyalandı."
+}

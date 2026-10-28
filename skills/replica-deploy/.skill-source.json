@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/Jakeschincariol/replica-skill",
+  "source_sha": "77c9436fb3d18c3d58169efb8caf4fe906b0dc51",
+  "license": "MIT",
+  "vendored_from": "Jakeschincariol/replica-skill (commit 77c9436fb3d1)",
+  "note": "Uygulama klonlama: tersine mühendislik, yeniden kurma, test ve düzeltme. Depo kökündeki düz skill klasörleri olduğu gibi kopyalandı."
+}

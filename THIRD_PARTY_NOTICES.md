@@ -66,6 +66,51 @@ MPL-2.0 gibi) kabul edilir; **GPL/AGPL gibi bulaşıcı lisanslar** bu projenin
 - Notlar: Değiştirilmeden kopyalandı (vendor). Kaynak SHA `skills/holmes/.skill-source.json` içinde de kayıtlıdır.
 - Lisans metni: `skills/holmes/LICENSE`
 
+### tstack — Agent Skill paketi (günlük PR iş akışı)
+
+- Kaynak: https://github.com/t3dotgg/tstack @ `1085050f3baed1ac724caa4a8166145fb2ac88af`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Theo Browne
+- Alınan dosyalar: `skills/{babysit-pr,council,file-pr,full-send,full-stop,leaving-pr-comments,modernize,sol-loop,takeover}/**` (her biri SKILL.md, LICENSE, .skill-source.json; bazılarında scripts/ ve agents/)
+- Notlar: Depo `skills/` altındaki klasörler düzleştirilerek kopyalandı; her klasöre depo LICENSE'ı ve kaynak SHA'sı eklendi. `babysit-pr/scripts/pr-wait` POSIX shell script'idir; bu deponun desteklediği yorumlayıcılar (.py/.mjs/.js) dışında olduğu için `run_skill_script` ile ÇALIŞTIRILAMAZ (skill talimatları onu yine de anabilir).
+- Lisans metni: her skill klasöründeki `LICENSE`
+
+### founder-skill — Agent Skill paketi (iş fikri doğrulama)
+
+- Kaynak: https://github.com/Jakeschincariol/founder-skill @ `fd9385b0cfe1b96bebce3898fbd506d73eff5a9d`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Jake Schincariol
+- Alınan dosyalar: `skills/founder-{board,brand,cfo,competitors,consumer,launch,marketing,offer,ops,plan,pricing}/**` (her biri SKILL.md, LICENSE, .skill-source.json; bazılarında .py ve .json yardımcı dosyalar)
+- Notlar: Depo `skills/` altındaki klasörler düzleştirilerek kopyalandı; her klasöre depo LICENSE'ı ve kaynak SHA'sı eklendi. Python yardımcı script'leri (unit_economics.py, panel.py, compile.py, van_westendorp.py) bağımlılık gerektirmez; onaylı terminal aracıyla çalışır.
+- Lisans metni: her skill klasöründeki `LICENSE`
+
+### replica-skill — Agent Skill paketi (uygulama klonlama)
+
+- Kaynak: https://github.com/Jakeschincariol/replica-skill @ `77c9436fb3d18c3d58169efb8caf4fe906b0dc51`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Jake Schincariol
+- Alınan dosyalar: `skills/replica-{architect,backend,brand,build,deploy,design,diff,entrepreneur,launch,recon,test}/**` (her biri SKILL.md, LICENSE, .skill-source.json; bazılarında .py ve .json/.csv yardımcı dosyalar)
+- Notlar: Depo kökündeki düz skill klasörleri olduğu gibi kopyalandı; her klasöre depo LICENSE'ı ve kaynak SHA'sı eklendi. Python yardımcı script'leri (sweep.py, contrast.py, imgdiff.py, parity.py, reviews.py, listing.py) onaylı terminal aracıyla çalışır.
+- Lisans metni: her skill klasöründeki `LICENSE`
+
+### youtube-agent-skill — Agent Skill paketi (YouTube kanalı işletme)
+
+- Kaynak: https://github.com/Jakeschincariol/youtube-agent-skill @ `a2feb2104981a375ffd4f87ee04f4f5344ac43c6`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Jake Schincariol
+- Alınan dosyalar: `skills/yt-{audit,chapters,comment,edit,package,plan,retention,script,seo,shorts,viral}/**` (her biri SKILL.md, LICENSE, .skill-source.json; bazılarında .py ve hooks.json)
+- Notlar: Depo `skills/` altındaki klasörler düzleştirilerek kopyalandı; her klasöre depo LICENSE'ı ve kaynak SHA'sı eklendi. Python yardımcı script'leri (chapters.py, deadair.py, title.py, retention.py, hookscore.py, swipe.py) onaylı terminal aracıyla çalışır. Depo kökündeki paylaşılan `templates/voice.md` kopyalanmadı (skill'ler onu `~/.claude/youtube/voice.md` yolu üzerinden okur).
+- Lisans metni: her skill klasöründeki `LICENSE`
+
+### oil-ui — Agent Skill (UI tasarım)
+
+- Kaynak: https://github.com/oil-oil/oil-ui @ `e3334bd5f6e700d21ac275b169ceee6495db9391`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 oil-oil
+- Alınan dosyalar: `skills/oil-ui/**` (SKILL.md, references/, scripts/, assets/, tests/)
+- Notlar: SKILL.md depo kökünde olduğu ve kendi `references/`, `scripts/`, `assets/` klasörlerine göreli başvurduğu için klasör bütün olarak korundu (düzleştirilmedi). Script'leri ağır bağımlılıklar kullanır (playwright/chrome, Node.js); ana kuruluma EKLENMEDİ. Gömülü font lisansı (OFL) `skills/oil-ui/assets/fonts/instrument-serif/OFL.txt` altında korunmuştur.
+- Lisans metni: `skills/oil-ui/LICENSE`
+
 ### Jarvis'in kendi bağımlılıkları
 
 Aşağıdaki çalışma zamanı bağımlılıkları `pyproject.toml`'da listelenir ve

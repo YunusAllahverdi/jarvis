@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/Jakeschincariol/youtube-agent-skill",
+  "source_sha": "a2feb2104981a375ffd4f87ee04f4f5344ac43c6",
+  "license": "MIT",
+  "vendored_from": "Jakeschincariol/youtube-agent-skill (commit a2feb2104981)",
+  "note": "YouTube kanalı işletme: script, paketleme, SEO, retention, Shorts. Depo `skills/` altındaki klasörler düzleştirilerek kopyalandı."
+}
