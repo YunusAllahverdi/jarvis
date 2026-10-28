@@ -29,7 +29,12 @@ from app.security.audit import (
     AuditOutcome,
     safe_record,
 )
-from app.security.permissions import plan_override
+from app.security.permissions import (
+    AUDIT_TOOL_OVERRIDE,
+    ToolOverride,
+    plan_override,
+)
+from app.skills.models import skill_override_key
 from app.tools.base import PermissionLevel
 from app.tools.capabilities import CapabilityRegistry
 
@@ -69,11 +74,25 @@ class CapabilityProviderView(BaseModel):
     detail: str
 
 
+class CapabilitySkillView(BaseModel):
+    """Bir skill'in arayüz için güvenli görünümü (gövde içermez)."""
+
+    name: str
+    description: str
+    slug: str
+    license: str
+    source: str
+    source_sha: str
+    enabled: bool
+    override_key: str
+
+
 class CapabilitiesResponse(BaseModel):
-    """Yönetim yanıtı: sağlayıcılar, araçlar ve yapılandırma sorunları."""
+    """Yönetim yanıtı: sağlayıcılar, araçlar, skill'ler ve yapılandırma sorunları."""
 
     providers: list[CapabilityProviderView]
     tools: list[CapabilityToolView]
+    skills: list[CapabilitySkillView] = []
     errors: list[str]
 
 
@@ -200,6 +219,19 @@ async def read_capabilities(request: Request) -> CapabilitiesResponse:
             for provider in snapshot.providers
         ],
         tools=[_to_tool_view(tool) for tool in snapshot.tools],
+        skills=[
+            CapabilitySkillView(
+                name=skill.name,
+                description=skill.description,
+                slug=skill.slug,
+                license=skill.license,
+                source=skill.source,
+                source_sha=skill.source_sha,
+                enabled=skill.enabled,
+                override_key=skill.override_key,
+            )
+            for skill in snapshot.skills
+        ],
         errors=list(snapshot.errors),
     )
 
@@ -285,6 +317,61 @@ async def update_tool_capability(
         enabled=plan.override.enabled,
         permission=plan.override.permission,
         audit_action=plan.audit_action,
+    )
+
+
+@router.put(
+    "/admin/capabilities/skills/{slug}",
+    response_model=ToolOverrideResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_skill_capability(
+    slug: str, body: ToolOverrideRequest, request: Request
+) -> ToolOverrideResponse:
+    """Bir skill'i açar/kapatır.
+
+    Mevcut `ToolOverrideStore` mekanizması KULLANILIR: anahtar `skill_<slug>`
+    biçimindedir. Skill'ler yalnızca aç/kapa edilebilir; izin seviyesi
+    kavramı yoktur (izin, skill'in araçlarının kendi seviyesinden gelir ve
+    ayrı override edilir). İzin alanı verilirse yok sayılır.
+    """
+
+    _require_admin(request)
+    registry = _registry(request)
+    store = _override_store(request)
+
+    known = {skill.slug for skill in (await registry.describe()).skills}
+    if slug not in known:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "skill_not_found", "message": f"'{slug}' adlı skill kayıtlı değil."},
+        )
+
+    override = ToolOverride(
+        tool_name=skill_override_key(slug),
+        enabled=body.enabled,
+        permission=None,
+    )
+    store.set(override)
+    safe_record(
+        getattr(request.app.state, "audit_log", None),
+        AuditEvent(
+            action=AuditAction.TOOL_OVERRIDE,
+            outcome=AuditOutcome.SUCCESS,
+            tool_name=override.tool_name,
+            arguments={"enabled": body.enabled, "reason": "skill override"},
+        ),
+    )
+
+    await registry.rebuild()
+
+    return ToolOverrideResponse(
+        tool_name=override.tool_name,
+        accepted=True,
+        reason="Skill açıldı." if body.enabled else "Skill kapatıldı.",
+        enabled=body.enabled,
+        permission=None,
+        audit_action=AUDIT_TOOL_OVERRIDE,
     )
 
 

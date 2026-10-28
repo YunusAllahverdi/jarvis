@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/Oldcircle/geo-sleuth",
+  "source_sha": "9a29a51cbe890ff06fdf66ba4f74db6b2186d8f1",
+  "license": "MIT",
+  "vendored_from": "skills/geo-sleuth",
+  "note": "Fotoğrafın çekildiği yeri kanıta dayalı olarak bulur. scripts/doctor.py gereksinimleri kontrol eder; ağır ML bağımlılıkları (torch/transformers/opencv) opsiyonel extra olarak eklenmiştir, ana kuruluma dahil edilmemiştir."
+}

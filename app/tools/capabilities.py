@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config.settings import Settings
 from app.security.permissions import PermissionDecision, ToolPermissionPolicy
 from app.security.tool_overrides import ToolOverrideStore
+from app.skills.models import skill_override_key
 from app.tools.base import PermissionLevel, Tool
 from app.tools.providers import ProviderHealth, ToolProvider
 from app.tools.registry import DuplicateToolError, ToolRegistry
@@ -78,6 +79,29 @@ class ProviderView(BaseModel):
     detail: str = ""
 
 
+class SkillView(BaseModel):
+    """Bir skill'in arayüze sunulan güvenli görünümü.
+
+    Gövde, dosya yolu ve içerik TAŞIMAZ: yalnızca ad, açıklama, kaynak repo,
+    lisans ve açık/kapalı durumu. Böylece yönetim paneli skill'leri
+    listeleyebilir ama hiçbir gizli ayrıntı sızmaz.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    description: str = ""
+    slug: str
+    license: str = ""
+    source: str = ""
+    source_sha: str = ""
+    enabled: bool = True
+    """Kullanıcı override'ına göre etkin mi."""
+
+    override_key: str = ""
+    """Bu skill'i açıp kapatmak için kullanılacak override anahtarı."""
+
+
 class CapabilitySnapshot(BaseModel):
     """Yetenek kaydının tam, salt-okunur anlık görüntüsü."""
 
@@ -85,6 +109,13 @@ class CapabilitySnapshot(BaseModel):
 
     providers: list[ProviderView] = Field(default_factory=list)
     tools: list[ToolView] = Field(default_factory=list)
+    skills: list[SkillView] = Field(default_factory=list)
+    """Keşfedilen skill'ler — ayrı bir grup olarak listelenir.
+
+    Sağlayıcılardan AYRIDIR: skill'ler kullanıcı tarafından tek tek açılıp
+    kapatılabilen yeteneklerdir, birer araç üreticisi değildir.
+    """
+
     errors: list[str] = Field(default_factory=list)
     """Kayıt sırasında oluşan yapılandırılmış sorunlar (ör. isim çakışması).
 
@@ -310,7 +341,57 @@ class CapabilityRegistry:
             self._tool_view(tool)
             for tool in sorted(self._registry.list_tools(), key=lambda t: t.name)
         ]
-        return CapabilitySnapshot(providers=providers, tools=tools, errors=list(self._errors))
+        return CapabilitySnapshot(
+            providers=providers,
+            tools=tools,
+            skills=self._collect_skills(),
+            errors=list(self._errors),
+        )
+
+    def _collect_skills(self) -> list[SkillView]:
+        """Skill sunan sağlayıcılardan skill görünümlerini toplar.
+
+        Duck-typing bilinçlidir: `ToolProvider` sözleşmesi skill diye bir
+        kavram tanımaz. Skill sunan sağlayıcı (bugün yalnızca `SkillProvider`)
+        isteğe bağlı bir `skills()` metodu ekler; sunmayan sağlayıcılar
+        etkilenmez. Bir sağlayıcının skill toplama sırasında patlaması
+        diğerlerini düşürmez.
+        """
+
+        collected: list[SkillView] = []
+        seen: set[str] = set()
+        for provider in self._providers:
+            collect = getattr(provider, "skills", None)
+            if collect is None:
+                continue
+            if not provider.enabled(self._settings):
+                continue
+            try:
+                infos = collect()
+            except Exception:
+                logger.exception(
+                    "capability_skill_collection_failed", extra={"provider": provider.id}
+                )
+                self._errors.append(f"'{provider.id}' sağlayıcısının skill'leri listelenemedi.")
+                continue
+            for info in infos:
+                if info.slug in seen:
+                    continue
+                seen.add(info.slug)
+                collected.append(
+                    SkillView(
+                        name=info.name,
+                        description=info.description,
+                        slug=info.slug,
+                        license=info.license,
+                        source=info.source,
+                        source_sha=info.source_sha,
+                        enabled=info.enabled,
+                        override_key=skill_override_key(info.slug),
+                    )
+                )
+        collected.sort(key=lambda item: item.name)
+        return collected
 
     def tool_views(self) -> list[ToolView]:
         """Kayıtlı araçların görünümlerini döndürür (senkron; sağlık içermez)."""

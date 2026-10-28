@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -19,6 +20,7 @@ from app.services.conversation import ConversationStore
 from app.services.memory_retrieval import MemoryRetrievalService
 from app.services.memory_service import MemoryWriteService
 from app.services.prompts import PromptProvider
+from app.skills.prompt import build_skills_section
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 
@@ -61,8 +63,10 @@ atlanamaz. Prompt yalnızca ilk savunma katmanıdır.
 """
 
 
-def _system_prompt_with_tool_warning(prompt: str, *, has_tools: bool) -> str:
-    """System prompt'a tool sonucu uyarısını ekler.
+def _system_prompt_with_tool_warning(
+    prompt: str, *, has_tools: bool, skills_section: str | None = None
+) -> str:
+    """System prompt'a tool sonucu uyarısını ve skill kataloğunu ekler.
 
     Uyarı AYRI bir system mesajı olarak DEĞİL, system prompt'un devamı olarak
     eklenir. İki gerekçe:
@@ -76,10 +80,16 @@ def _system_prompt_with_tool_warning(prompt: str, *, has_tools: bool) -> str:
 
     Araç yoksa uyarı eklenmez: modele hiç gelmeyecek bir mesaj türünü
     anlatmak, bağlamı boşuna doldurur.
+
+    Skill kataloğu (ilerici açıklama) yalnızca ad ve açıklamalardan oluşur;
+    gövde ASLA buraya girmez — model onu ancak `load_skill` ile okur.
     """
-    if not has_tools:
-        return prompt
-    return f"{prompt}\n\n{_TOOL_RESULT_PREAMBLE}"
+    sections = [prompt]
+    if skills_section:
+        sections.append(skills_section)
+    if has_tools:
+        sections.append(_TOOL_RESULT_PREAMBLE)
+    return "\n\n".join(sections)
 
 
 _MEMORY_CONTEXT_PREAMBLE = (
@@ -139,6 +149,7 @@ class ChatOrchestrator:
         max_tool_rounds: int = 4,
         context_message_limit: int = 0,
         memory_context_limit: int = 5,
+        skill_provider: Any = None,
     ) -> None:
         """
         Args:
@@ -176,6 +187,10 @@ class ChatOrchestrator:
                 Bu limit yalnızca LLM bağlamını yönetir; kalıcı geçmişi silmez.
             memory_context_limit: Bir turda LLM bağlamına eklenecek maksimum
                 bellek kaydı sayısı. memory_retrieval None ise etkisizdir.
+            skill_provider: Skill kataloğunun kaynağı. Verilirse sistem
+                prompt'una yalnızca skill adları ve açıklamaları eklenir
+                (ilerici açıklama); gövdeler `load_skill` aracıyla okunur.
+                None ise hiçbir skill bloğu eklenmez (mevcut davranış korunur).
         """
         self._provider = provider
         self._conversation_store = conversation_store
@@ -189,6 +204,7 @@ class ChatOrchestrator:
         self._max_tool_rounds = max_tool_rounds
         self._context_message_limit = context_message_limit
         self._memory_context_limit = memory_context_limit
+        self._skill_provider = skill_provider
         self._last_experience: Experience | None = None
 
     def set_conversation_store(self, conversation_store: ConversationStore) -> None:
@@ -244,6 +260,29 @@ class ChatOrchestrator:
         """
         self._agent_service = agent_service
 
+    def set_skill_provider(self, skill_provider: Any) -> None:
+        """Skill kataloğu kaynağını kurucudan sonra bağlar (geç bağlama).
+
+        Skill keşfi dosya sistemine dokunur ve override deposu yalnızca
+        uygulama fiilen başladığında kurulur; bu yüzden kaynak sonradan
+        bağlanır. None geçmek skill bloğunu tümden kapatır.
+        """
+        self._skill_provider = skill_provider
+
+    def _skills_section(self) -> str | None:
+        """Sistem prompt'una girecek skill kataloğunu üretir.
+
+        Hiçbir hata sohbeti bozmaz: keşif patlarsa loglanır ve blok eklenmez.
+        """
+        if self._skill_provider is None:
+            return None
+        try:
+            infos = self._skill_provider.skills()
+        except Exception:
+            logger.exception("chat_skill_catalog_failed")
+            return None
+        return build_skills_section(infos)
+
     def _trim_context(self, messages: list[ChatMessage]) -> list[ChatMessage]:
         """Geçmiş mesajları context window limitine göre kırpar.
 
@@ -267,7 +306,9 @@ class ChatOrchestrator:
             ChatMessage(
                 role="system",
                 content=_system_prompt_with_tool_warning(
-                    self._prompt_loader.load(), has_tools=bool(tool_definitions)
+                    self._prompt_loader.load(),
+                    has_tools=bool(tool_definitions),
+                    skills_section=self._skills_section(),
                 ),
             ),
         ]

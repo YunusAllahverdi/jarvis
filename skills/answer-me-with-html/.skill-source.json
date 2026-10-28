@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/QingYunA/answer-me-with-html",
+  "source_sha": "2fa51dfab5495839425bc2279fa8790cd3601e58",
+  "license": "MIT",
+  "vendored_from": "skills/answer-me-with-html",
+  "note": "Karmaşık sorulara tek sayfa HTML cevap üretir. scripts/am.mjs tek dosyalık CLI'dır, bağımlılığı yoktur; yalnızca Node.js 20+ gerekir. Gömülü font lisansları skills/answer-me-with-html/licenses/ altında korunmuştur."
+}

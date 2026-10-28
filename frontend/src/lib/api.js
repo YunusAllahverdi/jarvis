@@ -245,6 +245,10 @@ export const api = {
   // DANGEROUS düşürme sunucuda deterministik olarak reddedilir.
   setToolOverride: (name, body) =>
     http.put("/admin/capabilities/tools/" + name, body).then((r) => r.data),
+  // Skill'ler aynı override deposunu `skill_<slug>` anahtarıyla kullanır;
+  // ayrı bir uç yalnızca slug ile araç adını karıştırmamak içindir.
+  setSkillOverride: (slug, body) =>
+    http.put("/admin/capabilities/skills/" + slug, body).then((r) => r.data),
 
   /* ── ajan panel kanalı ── */
 

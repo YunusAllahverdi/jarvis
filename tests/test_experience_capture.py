@@ -344,10 +344,11 @@ class TestFailedTurnDoesNotCaptureExperience:
 class TestConstructorSignatureUnchanged:
     def test_constructor_parameters_are_unchanged(self) -> None:
         """Kurucu yalnızca bilinçli olarak eklenen opsiyonel bağımlılıklarla
-        genişlemiş olmalı: `experience_store` (Phase 2D-Integration) ve
-        `agent_service` (LLM karar katmanı milestone'u).
+        genişlemiş olmalı: `experience_store` (Phase 2D-Integration),
+        `agent_service` (LLM karar katmanı milestone'u) ve `skill_provider`
+        (Agent Skills / SKILL.md desteği).
 
-        Her ikisi de mevcut `memory_service`/`memory_retrieval` deseniyle
+        Her üçü de mevcut `memory_service`/`memory_retrieval` deseniyle
         aynı biçimde, varsayılanı None olarak eklenmiştir — verilmediğinde bu
         dosyadaki tüm yakalama davranışı aynen korunur.
         """
@@ -366,8 +367,10 @@ class TestConstructorSignatureUnchanged:
             "max_tool_rounds",
             "context_message_limit",
             "memory_context_limit",
+            "skill_provider",
         }
         assert sig.parameters["experience_store"].default is None
+        assert sig.parameters["skill_provider"].default is None
 
 
 # ---------------------------------------------------------------------------

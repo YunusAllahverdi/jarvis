@@ -6,6 +6,7 @@ from app.tools.capabilities import (
     CapabilityRegistry,
     CapabilitySnapshot,
     ProviderView,
+    SkillView,
     ToolView,
 )
 from app.tools.providers import FunctionToolProvider, ProviderHealth, ToolProvider
@@ -20,6 +21,7 @@ __all__ = [
     "ProviderHealth",
     "ProviderView",
     "RiskTag",
+    "SkillView",
     "Tool",
     "ToolProvider",
     "ToolRegistry",

@@ -74,6 +74,7 @@ from app.services.prompts import SystemPromptLoader
 from app.services.speech import SpeechService
 from app.services.sqlite_conversation import SQLiteConversationStore
 from app.services.user_model_service import UserModelService
+from app.skills.provider import SkillProvider
 from app.tools.base import PermissionLevel
 from app.tools.builtin_providers import build_builtin_providers, default_provider
 from app.tools.capabilities import CapabilityRegistry
@@ -533,12 +534,19 @@ def _build_agent_capability_registry(
     maps_api_key: str,
     policy: ToolPermissionPolicy,
     override_store: ToolOverrideStore | None,
+    skill_provider: SkillProvider | None = None,
 ) -> CapabilityRegistry:
-    """Agent için yetenek kaydını kurar (temel araçlar + eklentiler).
+    """Agent için yetenek kaydını kurar (temel araçlar + eklentiler + skill'ler).
 
     Kayıt, paylaşılan registry'yi YERİNDE doldurur ve `rebuild_sync()` ile
     başlangıç araç yüzeyini oluşturur. Aynı kayıt daha sonra yönetim ucundan
     yeniden kurulabilir; böylece iki paralel araç yüzeyi oluşmaz.
+
+    Args:
+        skill_provider: Skill'leri sağlayacak örnek. Verilmezse (ya da
+            `skills_enabled` kapalıysa) yeni bir örnek kurulur; çağıran AYNI
+            örneği sohbet akışına da bağlayabilir, böylece iki yerde iki
+            farklı skill kataloğu oluşmaz.
     """
 
     registry = build_default_tool_registry(timezone_name=timezone_name)
@@ -561,9 +569,20 @@ def _build_agent_capability_registry(
         ui_action_bus=ui_action_bus,
         maps_api_key=maps_api_key,
     )
+    active_skill_provider = skill_provider or SkillProvider(
+        settings=settings,
+        command_policy=command_policy or CommandPolicy(allowed_commands=()),
+        override_store=override_store,
+    )
     capability_registry = CapabilityRegistry(
         registry=registry,
-        providers=build_builtin_providers(plugin_context, timezone_name=timezone_name),
+        providers=[
+            *build_builtin_providers(plugin_context, timezone_name=timezone_name),
+            # Skill sağlayıcısı en SONDA: skill'lerin araçları temel/eklenti
+            # araçlarıyla isim çakışırsa (ör. bir skill `run_command`
+            # tanımlasa) mevcut davranış korunur ve çakışma raporlanır.
+            active_skill_provider,
+        ],
         settings=settings,
         override_store=override_store,
         policy=policy,
@@ -764,6 +783,12 @@ def create_app(
         # sohbet akışının karar katmanını hiç çağırmaması istenebilir.
         agent_service=(initial_agent_service if active_settings.agent_chat_integration else None),
         context_message_limit=active_settings.conversation_context_limit,
+        # Skill kataloğu burada, override deposu olmadan kurulur; lifespan'de
+        # kalıcı override deposu hazır olunca AYNI kaynak yeniden bağlanır.
+        skill_provider=SkillProvider(
+            settings=active_settings,
+            command_policy=_build_command_policy(active_settings),
+        ),
     )
 
     @asynccontextmanager
@@ -905,6 +930,17 @@ def create_app(
 
         command_policy = _build_command_policy(active_settings)
 
+        # Skill kataloğu TEK bir örnekten yönetilir: hem yetenek kaydı hem
+        # sohbet akışı AYNI sağlayıcıyı görür, böylece yönetim panelinden
+        # yapılan bir aç/kapa kararı ikisinde birden geçerli olur.
+        skill_provider = SkillProvider(
+            settings=active_settings,
+            command_policy=command_policy,
+            override_store=app_instance.state.tool_override_store,
+        )
+        chat_orchestrator.set_skill_provider(skill_provider)
+        app_instance.state.skill_provider = skill_provider
+
         if auto_wire_agent_on_startup:
             # Agent en son kurulur: bağlam kaynaklarının (bellek, deneyim,
             # kullanıcı modeli) tamamı yukarıdaki bloklarda oluşmuş olur.
@@ -932,6 +968,7 @@ def create_app(
                 maps_api_key=active_settings.maps_api_key,
                 policy=agent_policy,
                 override_store=app_instance.state.tool_override_store,
+                skill_provider=skill_provider,
             )
             app_instance.state.capability_registry = agent_capabilities
 

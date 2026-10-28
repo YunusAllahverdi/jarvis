@@ -1,0 +1,7 @@
+{
+  "source": "https://github.com/Oldcircle/holmes-skill",
+  "source_sha": "66ac6d4730aacbb16ce544f586af95377d00fba8",
+  "license": "MIT",
+  "vendored_from": "skills/holmes",
+  "note": "Fotoğrafı kanıta dayalı okur: önce gözlem, sonra çıkarım; her çıkarım dayandığı gözlemi gösterir."
+}

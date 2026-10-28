@@ -17,6 +17,9 @@ dependencies = [
   "pydantic-settings>=2.5,<3.0",
   "psutil>=6.0,<8.0",
   "python-dotenv>=1.0,<2.0",
+  # SKILL.md ön yüzünü (YAML) ayrıştırmak için. `yaml.safe_load` kullanılır;
+  # keyfi nesne kurma izni veren `yaml.load` asla çağrılmaz.
+  "pyyaml>=6.0,<7.0",
   "uvicorn[standard]>=0.30,<1.0",
   # Windows'ta IANA saat dilimi veritabanı yoktur ve `zoneinfo` onsuz
   # "Europe/Istanbul" gibi bir adı çözemez. Saat dilimi ayarı olmadan
@@ -32,6 +35,25 @@ dev = [
   "ruff>=0.9,<1.0",
   "mypy>=1.13,<2.0",
   "pre-commit>=4.0,<5.0",
+  "types-pyyaml>=6.0",
+]
+# geo-sleuth skill'inin (skills/geo-sleuth) script'leri için gereken bağımlılıklar.
+# Ana kuruluma DAHİL EDİLMEZ: torch/transformers/opencv gibi ağır ML paketleri
+# çoğu kurulumda kullanılmaz ve `pip install jarvis-local`'ı şişirirdi.
+# Gereksinimleri önce `python skills/geo-sleuth/scripts/doctor.py` ile kontrol
+# edin; kurmak için: pip install -e ".[skills-geo-sleuth]"
+skills-geo-sleuth = [
+  "pillow>=10.0",
+  "pillow-heif>=0.16",
+  "numpy>=1.26",
+  "playwright>=1.40",
+  "requests>=2.31",
+  "socksio>=1.0",
+  "pysocks>=1.7",
+  # Yalnızca sat_scan.py / match.py (görsel eşleştirme) gerektirir:
+  "torch>=2.2",
+  "transformers>=4.40",
+  "opencv-python-headless>=4.9",
 ]
 
 [project.scripts]
@@ -60,7 +82,12 @@ target-version = "py312"
 line-length = 100
 # `.venv` gibi klasörler zaten varsayılan olarak dışlanır; burada projeye
 # özgü ek bir dışlama yok.
-extend-exclude = ["frontend", "design"]
+#
+# `skills/` DIŞLANIR: oradaki dosyalar vendorlanmış üçüncü taraf skill'lerdir
+# (kendi kod biçimleri ve lisans başlıkları vardır) ve bu deponun lint
+# kurallarına tabi değildir. Bu klasördeki dosyalara dokunulmaz; güncelleme
+# upstream'den yeniden kopyalanarak yapılır.
+extend-exclude = ["frontend", "design", "skills"]
 
 [tool.ruff.lint]
 select = [

@@ -30,6 +30,42 @@ MPL-2.0 gibi) kabul edilir; **GPL/AGPL gibi bulaşıcı lisanslar** bu projenin
 
 ## Kayıtlar
 
+### anatomy — Agent Skill (izometrik SVG çizimleri)
+
+- Kaynak: https://github.com/wheresryan22/anatomy @ `1482e8469b0a9e0d8cc18ea2740a01423d29ae80`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Ryan
+- Alınan dosyalar: `skills/anatomy/**` (SKILL.md depo kökünden; kit/, examples/, references/, scripts/, agents/, evals/, tests/ ve kök belgeleri dahil)
+- Notlar: Değiştirilmeden kopyalandı (vendor). Kaynak SHA `skills/anatomy/.skill-source.json` içinde de kayıtlıdır. Örnek çıktılar (examples/ altındaki PDF/HTML) dahildir.
+- Lisans metni: `skills/anatomy/LICENSE`
+
+### answer-me-with-html — Agent Skill (tek sayfa HTML cevap)
+
+- Kaynak: https://github.com/QingYunA/answer-me-with-html @ `2fa51dfab5495839425bc2279fa8790cd3601e58`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Answer me with HTML contributors
+- Alınan dosyalar: `skills/answer-me-with-html/**` (SKILL.md, scripts/am.mjs tek dosyalık CLI, references/, licenses/)
+- Notlar: Değiştirilmeden kopyalandı (vendor). Kaynak SHA `skills/answer-me-with-html/.skill-source.json` içinde de kayıtlıdır. CLI yalnızca Node.js 20+ gerektirir; başka bağımlılık yoktur. Gömülü font lisansları (OFL) `skills/answer-me-with-html/licenses/` altında korunmuştur.
+- Lisans metni: `skills/answer-me-with-html/LICENSE`
+
+### geo-sleuth — Agent Skill (fotoğraf konumu bulma)
+
+- Kaynak: https://github.com/Oldcircle/geo-sleuth @ `9a29a51cbe890ff06fdf66ba4f74db6b2186d8f1`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Oldcircle
+- Alınan dosyalar: `skills/geo-sleuth/**` (SKILL.md, scripts/, references/, regions/, data/, tests/)
+- Notlar: Değiştirilmeden kopyalandı (vendor). Kaynak SHA `skills/geo-sleuth/.skill-source.json` içinde de kayıtlıdır. Script bağımlılıkları (pillow, pillow-heif, numpy, playwright, requests, socksio, pysocks; sat_scan.py/match.py için torch, transformers, opencv-python-headless) ana kuruluma EKLENMEDİ; `pyproject.toml`'da `skills-geo-sleuth` opsiyonel extra'sı olarak tanımlandı. Gereksinim kontrolü: `python skills/geo-sleuth/scripts/doctor.py`.
+- Lisans metni: `skills/geo-sleuth/LICENSE`
+
+### holmes — Agent Skill (kanıta dayalı fotoğraf okuma)
+
+- Kaynak: https://github.com/Oldcircle/holmes-skill @ `66ac6d4730aacbb16ce544f586af95377d00fba8`
+- Lisans: MIT
+- Telif: Copyright (c) 2026 Oldcircle
+- Alınan dosyalar: `skills/holmes/**` (SKILL.md, references/)
+- Notlar: Değiştirilmeden kopyalandı (vendor). Kaynak SHA `skills/holmes/.skill-source.json` içinde de kayıtlıdır.
+- Lisans metni: `skills/holmes/LICENSE`
+
 ### Jarvis'in kendi bağımlılıkları
 
 Aşağıdaki çalışma zamanı bağımlılıkları `pyproject.toml`'da listelenir ve
@@ -75,4 +111,5 @@ başlığı konmalıdır.
 
 ---
 
-_Bu dosyada henüz bu depoya kopyalanmış üçüncü taraf kod kaydı yoktur._
+_Bu dosyada listelenen vendor skill'ler dışında, bu depoya kopyalanmış
+başka üçüncü taraf kod kaydı yoktur._

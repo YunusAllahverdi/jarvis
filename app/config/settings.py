@@ -229,6 +229,19 @@ class Settings(BaseSettings):
     # Örnek: JARVIS_ENABLED_PLUGINS=["example"]
     enabled_plugins: list[str] = Field(default_factory=list)
 
+    # Agent Skills (SKILL.md)
+    # ------------------------------------------------------------------
+    # `skills/` klasörlerindeki (ve buradaki ek klasörlerdeki) her alt klasör
+    # agentskills.io spesifikasyonuna göre bir yetenek olabilir. Varsayılan
+    # AÇIK: skill'ler yalnızca READ talimatları ve onay gerektiren script
+    # çalıştırma sunar; ikincisi terminal açık olmadan hiç çalışmaz. Yine de
+    # kullanıcı tümden kapatabilir.
+    skills_enabled: bool = True
+
+    # Skill klasörlerinin arandığı yollar (sıra korunur, ilk bulunan kazanır).
+    # Göreli yollar çalışma dizinine göre çözülür.
+    skills_dirs: list[str] = Field(default_factory=lambda: ["skills"])
+
     # LLM Council
     # ------------------------------------------------------------------
     # VARSAYILAN KAPALI. Council tur başına N+N+1 LLM çağrısı demektir ve

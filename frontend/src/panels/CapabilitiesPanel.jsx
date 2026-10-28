@@ -92,10 +92,29 @@ export default function CapabilitiesPanel() {
   const downgrade = (tool, level) =>
     apply(tool, { permission: level, allow_downgrade: true }, true);
 
+  // Skill'ler yalnızca aç/kapa edilir; izin seviyesi kavramı yoktur (izin,
+  // skill'in araçlarının kendi seviyesinden gelir). Bu yüzden onay istemez.
+  const toggleSkill = async (skill) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await api.setSkillOverride(skill.slug, { enabled: !skill.enabled });
+      setNotice({
+        text: r.accepted ? r.reason : `Reddedildi: ${r.reason}`,
+        error: !r.accepted,
+      });
+      await refresh();
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <PanelShell
       title="Yetenek Kaydı"
-      subtitle="Sağlayıcılar ve araçlar. İzin yükseltme serbest; düşürme yalnızca onayla."
+      subtitle="Sağlayıcılar, skill'ler ve araçlar. İzin yükseltme serbest; düşürme yalnızca onayla."
       testId="capabilities-panel"
       command="capabilities"
       onCommandDone={refresh}
@@ -163,6 +182,79 @@ export default function CapabilitiesPanel() {
                 </div>
               ))}
             </div>
+          </section>
+
+          <section data-testid="capabilities-skills">
+            <h3 className="text-[10px] uppercase tracking-[0.28em] font-mono text-muted mb-2">
+              Skill'ler
+            </h3>
+            {(data.skills || []).length === 0 ? (
+              <Empty
+                label="Keşfedilen skill yok."
+                hint="skills/ klasörüne agentskills.io biçiminde bir SKILL.md koyun; ayrıntılar docs/skills.md."
+                testId="capabilities-skills-empty"
+              />
+            ) : (
+              <div className="space-y-3">
+                {data.skills.map((s) => (
+                  <div key={s.slug} className="glass-soft rounded-lg p-4" data-testid={`skill-${s.slug}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm text-white font-mono">{s.name}</p>
+                          {s.license && (
+                            <span className="text-[10px] font-mono text-muted border hairline rounded px-1.5 py-0.5">
+                              {s.license}
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
+                              s.enabled
+                                ? "border-emerald-500/40 text-emerald-200"
+                                : "border-white/15 text-muted"
+                            }`}
+                            data-testid={`skill-state-${s.slug}`}
+                          >
+                            {s.enabled ? "açık" : "kapalı"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted mt-1.5 leading-relaxed">{s.description}</p>
+                        {s.source && (
+                          <a
+                            href={s.source}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="text-[10px] text-secondary hover:underline break-all mt-2 inline-block"
+                            data-testid={`skill-source-${s.slug}`}
+                          >
+                            {s.source}
+                            {s.source_sha ? ` @ ${s.source_sha.slice(0, 12)}` : ""}
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2 shrink-0 w-36">
+                        <Btn
+                          kind={s.enabled ? "ghost" : "primary"}
+                          onClick={() => toggleSkill(s)}
+                          disabled={busy}
+                          data-testid={`skill-toggle-${s.slug}`}
+                        >
+                          {s.enabled ? (
+                            <>
+                              <Lock size={11} className="inline mr-1" /> Kapat
+                            </>
+                          ) : (
+                            <>
+                              <Unlock size={11} className="inline mr-1" /> Aç
+                            </>
+                          )}
+                        </Btn>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section data-testid="capabilities-tools">
